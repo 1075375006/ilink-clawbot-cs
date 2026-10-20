@@ -25,6 +25,13 @@ import {
 import { previewPush, pushHistory, sendPush } from "../services/push.js";
 import { refreshUserInfo } from "../services/binding.js";
 import { gateway } from "../ilink/gateway.js";
+import {
+  createSchedule,
+  deleteSchedule,
+  listSchedules,
+  recentScheduleRuns,
+  updateSchedule,
+} from "../services/keepalive-schedules.js";
 
 const idParam = z.object({ id: z.coerce.number().int().positive() });
 
@@ -122,14 +129,20 @@ export async function registerAdminRoutes(app: FastifyInstance): Promise<void> {
     const body = z
       .object({
         content: z.string().default(""),
-        msgType: z.enum(["text", "image"]).default("text"),
+        msgType: z.enum(["text", "image", "file"]).default("text"),
         mediaUrl: z.string().optional().nullable(),
+        mediaName: z.string().max(255).optional().nullable(),
+        mediaSize: z.number().int().nonnegative().optional().nullable(),
+        mediaMime: z.string().max(128).optional().nullable(),
       })
       .parse(request.body);
     const message = await sendOutbound(id, {
       content: body.content,
       msgType: body.msgType,
       mediaUrl: body.mediaUrl,
+      mediaName: body.mediaName,
+      mediaSize: body.mediaSize,
+      mediaMime: body.mediaMime,
     });
     return { message: (await import("../serializers.js")).serializeMessage(message) };
   });
@@ -175,8 +188,11 @@ export async function registerAdminRoutes(app: FastifyInstance): Promise<void> {
       .object({
         userIds: z.array(z.number().int().positive()).min(1).max(500),
         content: z.string(),
-        msgType: z.enum(["text", "image"]).default("text"),
+        msgType: z.enum(["text", "image", "file"]).default("text"),
         mediaUrl: z.string().nullable().optional(),
+        mediaName: z.string().max(255).optional().nullable(),
+        mediaSize: z.number().int().nonnegative().optional().nullable(),
+        mediaMime: z.string().max(128).optional().nullable(),
       })
       .parse(request.body);
     return sendPush(body);
@@ -189,4 +205,46 @@ export async function registerAdminRoutes(app: FastifyInstance): Promise<void> {
   app.get("/api/keepalive/config", { preHandler: requireAdmin }, async () => ({
     config: getKeepaliveConfig(),
   }));
+
+  app.get("/api/keepalive/schedules", { preHandler: requireAdmin }, async () => ({
+    items: listSchedules(),
+    runs: recentScheduleRuns(),
+  }));
+
+  app.post("/api/keepalive/schedules", { preHandler: requireAdmin }, async (request) => {
+    const body = z
+      .object({
+        cronExpr: z.string().min(1),
+        message: z.string(),
+        mediaType: z.enum(["text", "image", "file"]).optional(),
+        mediaUrl: z.string().nullable().optional(),
+        mediaName: z.string().max(255).nullable().optional(),
+        enabled: z.boolean().optional(),
+        onlyIfActive: z.boolean().optional(),
+      })
+      .parse(request.body);
+    return { item: createSchedule(body) };
+  });
+
+  app.patch("/api/keepalive/schedules/:id", { preHandler: requireAdmin }, async (request) => {
+    const { id } = idParam.parse(request.params);
+    const body = z
+      .object({
+        cronExpr: z.string().min(1).optional(),
+        message: z.string().optional(),
+        mediaType: z.enum(["text", "image", "file"]).optional(),
+        mediaUrl: z.string().nullable().optional(),
+        mediaName: z.string().max(255).nullable().optional(),
+        enabled: z.boolean().optional(),
+        onlyIfActive: z.boolean().optional(),
+      })
+      .parse(request.body);
+    return { item: updateSchedule(id, body) };
+  });
+
+  app.delete("/api/keepalive/schedules/:id", { preHandler: requireAdmin }, async (request) => {
+    const { id } = idParam.parse(request.params);
+    deleteSchedule(id);
+    return { ok: true };
+  });
 }

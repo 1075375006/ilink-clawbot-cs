@@ -2730,6 +2730,48 @@ img {
   border-radius: 9px;
 }
 
+.chat-file {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 200px;
+  padding: 10px 12px;
+  color: inherit;
+  text-decoration: none;
+}
+
+.chat-file-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  flex: none;
+  border-radius: 8px;
+  background: #eef4f8;
+  color: #2e86ab;
+}
+
+.chat-file-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.chat-file-meta strong {
+  font-size: 12px;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chat-file-meta small {
+  font-size: 10px;
+  color: var(--muted-2);
+}
+
 .bubble-tag {
   display: inline-flex;
   align-items: center;
@@ -2832,6 +2874,41 @@ img {
   display: flex;
   align-items: center;
   justify-content: center;
+}
+
+.pending-image.pending-file {
+  width: auto;
+  max-width: 280px;
+}
+
+.pending-file-chip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border: 1px solid #dce4ee;
+  border-radius: 8px;
+  background: #f7fafc;
+  color: #2e86ab;
+}
+
+.pending-file-chip span {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.pending-file-chip strong {
+  font-size: 12px;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pending-file-chip small {
+  font-size: 10px;
+  color: var(--muted-2);
 }
 
 .composer-box {
@@ -3413,6 +3490,37 @@ img {
   display: flex;
   align-items: center;
   justify-content: center;
+}
+
+.push-file-preview {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #f7fafc;
+  color: #2e86ab;
+}
+
+.push-file-preview span {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.push-file-preview strong {
+  font-size: 12px;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.push-file-preview small {
+  font-size: 10px;
+  color: var(--muted-2);
 }
 
 .push-textarea {
@@ -4017,6 +4125,184 @@ img {
 
 .quota-warn-row .field-label {
   margin-bottom: 0;
+}
+
+.schedule-panel {
+  margin-top: 16px;
+}
+
+.schedule-form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #fafcff;
+  margin-bottom: 12px;
+}
+
+.schedule-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  font-size: 10.5px;
+  font-weight: 550;
+  color: var(--text-2);
+}
+
+.schedule-form input,
+.schedule-form textarea {
+  border: 1px solid #dfe6ef;
+  border-radius: 8px;
+  padding: 8px 10px;
+  font-size: 11.5px;
+  outline: 0;
+  resize: vertical;
+  background: #fff;
+}
+
+.schedule-form input:focus,
+.schedule-form textarea:focus {
+  border-color: #9dbcf3;
+  box-shadow: 0 0 0 3px rgba(46, 134, 171, 0.08);
+}
+
+.schedule-form small {
+  font-size: 9px;
+  color: var(--muted);
+  font-weight: 400;
+}
+
+.schedule-type-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.schedule-type-row .select-wrap {
+  width: 150px;
+  height: 32px;
+}
+
+.schedule-thumb {
+  width: 34px;
+  height: 34px;
+  object-fit: cover;
+  border-radius: 6px;
+  border: 1px solid var(--line);
+}
+
+.schedule-file-name {
+  max-width: 180px;
+  font-size: 11px;
+  color: var(--muted-2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.schedule-add {
+  align-self: flex-start;
+}
+
+.schedule-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.schedule-item {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 9px 10px;
+  border: 1px solid var(--line-soft);
+  border-radius: 9px;
+  background: #fff;
+}
+
+.schedule-check {
+  width: 18px;
+  height: 18px;
+  border-radius: 5px;
+  border: 1.5px solid #ccd6e2;
+  background: #fff;
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+}
+
+.schedule-check.on {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+.schedule-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.schedule-main strong {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 10.5px;
+}
+
+.schedule-main code {
+  font-family: "SFMono-Regular", ui-monospace, Menlo, monospace;
+  background: #f2f5f9;
+  border-radius: 4px;
+  padding: 1px 5px;
+}
+
+.schedule-main em {
+  font-style: normal;
+  font-size: 9px;
+  color: var(--muted);
+  background: #f4f7fa;
+  border-radius: 4px;
+  padding: 1px 5px;
+}
+
+.schedule-main span {
+  font-size: 10px;
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.schedule-runs {
+  margin-top: 10px;
+  padding-top: 9px;
+  border-top: 1px solid var(--line-soft);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.schedule-runs > span {
+  font-size: 9.5px;
+  color: var(--muted);
+}
+
+.schedule-runs div {
+  display: flex;
+  justify-content: space-between;
+  font-size: 9.5px;
+  color: var(--text-2);
+}
+
+.schedule-runs em {
+  font-style: normal;
+  color: var(--muted);
 }
 
 .template-wrap {

@@ -100,8 +100,12 @@ export function ChannelPage() {
             <strong>{isLive ? `${userBots} 个` : "模拟"}</strong>
           </div>
           <div>
-            <span>北辰登录</span>
-            <strong>{channel.beichenConfigured ? "已配置" : "演示授权"}</strong>
+            <span>聚合登录</span>
+            <strong>
+              {channel.oauthConfigured ?? channel.beichenConfigured
+                ? `已配置 · ${channel.oauthProvider ?? "oauth"}`
+                : "演示授权"}
+            </strong>
           </div>
         </div>
       </section>
@@ -205,8 +209,8 @@ export function ChannelPage() {
                 <dd className="mono ellipsis">{channel.publicBaseUrl}</dd>
               </div>
               <div>
-                <dt>北辰回调地址</dt>
-                <dd className="mono ellipsis">{channel.publicBaseUrl}/api/oauth/beichen/callback</dd>
+                <dt>聚合登录回调地址</dt>
+                <dd className="mono ellipsis">{channel.publicBaseUrl}/api/oauth/callback</dd>
               </div>
               <div>
                 <dt>连接时间</dt>
@@ -217,18 +221,18 @@ export function ChannelPage() {
               type="button"
               className="btn btn-ghost btn-block"
               onClick={() => {
-                navigator.clipboard.writeText(`${channel.publicBaseUrl}/api/oauth/beichen/callback`);
+                navigator.clipboard.writeText(`${channel.publicBaseUrl}/api/oauth/callback`);
                 toast("回调地址已复制");
               }}
             >
               <Copy size={15} /> 复制回调地址
             </button>
-            {!channel.beichenConfigured ? (
+            {!(channel.oauthConfigured ?? channel.beichenConfigured) ? (
               <div className="beichen-config-hint">
                 <AlertTriangle size={14} />
                 <span>
-                  北辰 AppID / AppKey 未配置。请编辑项目根目录的 <code>.env</code>，
-                  填写 <code>BEICHEN_APPID</code>、<code>BEICHEN_APPKEY</code> 后重启服务。
+                  聚合登录 AppID / AppKey 未配置。请编辑项目根目录的 <code>.env</code>，
+                  填写 <code>OAUTH_APPID</code>、<code>OAUTH_APPKEY</code> 后重启服务。
                 </span>
               </div>
             ) : null}
@@ -240,7 +244,7 @@ export function ChannelPage() {
               <h4>凭证安全</h4>
               <p>
                 每个 Bot 的 token 使用 AES-256-GCM 加密存储，不会出现在前端或客户消息中。
-                北辰 AppKey 仅保存在服务端环境变量。
+                聚合登录 AppKey 仅保存在服务端环境变量。
               </p>
             </div>
           </section>

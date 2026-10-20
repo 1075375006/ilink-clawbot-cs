@@ -33,9 +33,12 @@ export interface Message {
   id: number;
   userId: number;
   direction: "inbound" | "outbound";
-  type: "text" | "image" | "template" | "system";
+  type: "text" | "image" | "file" | "template" | "system";
   content: string;
   mediaUrl: string | null;
+  mediaName: string | null;
+  mediaSize: number | null;
+  mediaMime: string | null;
   isKeepalive: boolean;
   consumedQuota: boolean;
   isRead: boolean;
@@ -58,6 +61,8 @@ export interface ChannelStatus {
   lastPollAt: string | null;
   sessionExpired: boolean;
   beichenConfigured: boolean;
+  oauthConfigured?: boolean;
+  oauthProvider?: string;
   customerQrUrl: string | null;
   publicBaseUrl: string;
   protocol: string;

@@ -178,7 +178,7 @@ export function BindPage({ autoScan = false, successView = false }: BindProps) {
           <div className="bind-trust">
             <div>
               <ShieldCheck size={17} />
-              <span>北辰聚合登录授权，不获取密码</span>
+              <span>聚合登录授权，不获取密码</span>
             </div>
             <div>
               <Link2 size={17} />
@@ -436,7 +436,7 @@ export function BindPage({ autoScan = false, successView = false }: BindProps) {
       </main>
 
       <footer className="bind-foot">
-        <span>Powered by iLink ClawBot · 北辰聚合登录</span>
+        <span>Powered by iLink ClawBot · 聚合登录</span>
         <span>鸿蒙版微信当前可能不完全支持 ClawBot，请使用 iOS / Android 微信</span>
       </footer>
     </div>

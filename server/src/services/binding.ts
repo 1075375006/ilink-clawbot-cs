@@ -1,7 +1,7 @@
 import crypto from "node:crypto";
 import QRCode from "qrcode";
 import { getDb, type BindingSessionRow, type MessageRow, type UserRow } from "../db.js";
-import { env, beichenRedirectUri } from "../env.js";
+import { env, oauthRedirectUri } from "../env.js";
 import { AppError, notFound } from "../errors.js";
 import { gateway } from "../ilink/gateway.js";
 import { getBindingQr, pollBindingQr, type BindingQrStatus } from "../ilink/qr.js";
@@ -9,7 +9,7 @@ import { emitToAdmins } from "../realtime.js";
 import { encryptSecret, randomToken } from "../util/crypto.js";
 import { deleteQrMapping, getQrMapping, setQrMapping } from "../redis.js";
 import { addHours, addMinutes, isPast, nowIso } from "../util/time.js";
-import { beichenConfigured, exchangeCode, getLoginUrl, queryUser, type BeichenIdentity } from "./beichen.js";
+import { oauthConfigured, exchangeCode, getLoginUrl, queryUser, type OAuthIdentity } from "./oauth.js";
 import { getUserView } from "./users.js";
 
 const MOCK_NAMES = ["唐可", "陆星河", "周柠", "蒋南", "苏木", "邵一", "程橙", "白露"];
@@ -19,7 +19,7 @@ function hashIndex(value: string, length: number): number {
   return digest.readUInt32BE(0) % length;
 }
 
-function mockIdentity(state: string): BeichenIdentity {
+function mockIdentity(state: string): OAuthIdentity {
   const index = hashIndex(state, MOCK_NAMES.length);
   const name = MOCK_NAMES[index]!;
   return {
@@ -49,7 +49,7 @@ export function getSession(token: string): BindingSessionRow {
 }
 
 function oauthEntryUrl(state: string): string {
-  return `${env.publicBaseUrl}/api/oauth/beichen/entry?state=${encodeURIComponent(state)}`;
+  return `${env.publicBaseUrl}/api/oauth/entry?state=${encodeURIComponent(state)}`;
 }
 
 function webBaseUrl(): string {
@@ -146,7 +146,7 @@ export async function simulateScan(token: string) {
     throw new AppError(410, "SESSION_EXPIRED", "二维码已过期，请返回后台重新生成。");
   }
   if (session.status !== "scanned" || !session.user_id) {
-    throw new AppError(409, "OAUTH_REQUIRED", "请先完成北辰身份授权，再扫描 ClawBot 二维码。");
+    throw new AppError(409, "OAUTH_REQUIRED", "请先完成身份授权，再扫描 ClawBot 二维码。");
   }
   const db = getDb();
   const user = db.prepare("SELECT * FROM users WHERE id = ?").get(session.user_id) as
@@ -225,7 +225,7 @@ export async function refreshClawbotQr(token: string) {
   const session = getSession(token);
   if (session.status === "completed") return getSessionView(token);
   if (session.status !== "scanned" || !session.user_id) {
-    throw new AppError(409, "OAUTH_REQUIRED", "请先完成北辰身份授权。");
+    throw new AppError(409, "OAUTH_REQUIRED", "请先完成身份授权。");
   }
   const channel = getDb().prepare("SELECT mode FROM channel_config WHERE id = 1").get() as {
     mode: "demo" | "live";
@@ -265,8 +265,8 @@ export async function resolveOAuthRedirect(state: string): Promise<string> {
   if (session.status === "expired" || isPast(session.expires_at)) {
     throw new AppError(410, "SESSION_EXPIRED", "授权链接已过期，请重新扫码。");
   }
-  if (beichenConfigured()) {
-    return getLoginUrl(beichenRedirectUri());
+  if (oauthConfigured()) {
+    return getLoginUrl(oauthRedirectUri());
   }
   const webBase = webBaseUrl();
   return `${webBase}/mock-oauth?state=${encodeURIComponent(state)}`;
@@ -291,8 +291,8 @@ export async function completeOAuth(params: {
   if (session.status === "expired" || isPast(session.expires_at)) {
     throw new AppError(410, "SESSION_EXPIRED", "授权已过期，请重新扫码。");
   }
-  const loginType = params.loginType || env.beichen.loginType;
-  const identity = beichenConfigured()
+  const loginType = params.loginType || env.oauth.loginType;
+  const identity = oauthConfigured()
     ? await exchangeCode(params.code, loginType)
     : mockIdentity(params.state);
 
@@ -369,14 +369,14 @@ export async function refreshUserInfo(user: UserRow) {
   if (user.status !== "bound" || !user.social_uid || !user.login_type) {
     throw new AppError(409, "USER_NOT_BOUND", "客户尚未完成身份授权，无法刷新资料。");
   }
-  if (!beichenConfigured()) {
+  if (!oauthConfigured()) {
     if (user.social_uid.startsWith("bc_demo_")) {
       getDb()
         .prepare("UPDATE users SET info_updated_at = ?, updated_at = ? WHERE id = ?")
         .run(nowIso(), nowIso(), user.id);
       return getUserView(user.id);
     }
-    throw new AppError(503, "ERR_BEICHEN_NOT_CONFIGURED", "北辰聚合登录尚未配置，无法刷新头像昵称。");
+    throw new AppError(503, "ERR_OAUTH_NOT_CONFIGURED", "聚合登录尚未配置，无法刷新头像昵称。");
   }
   const identity = await queryUser(user.social_uid, user.login_type);
   const now = nowIso();
@@ -536,7 +536,7 @@ async function confirmBinding(
   if (!session.user_id) {
     db.prepare(
       "UPDATE binding_sessions SET poll_error = ?, last_poll_at = ? WHERE id = ?",
-    ).run("请先完成北辰身份授权，再扫描 ClawBot 二维码。", nowIso(), session.id);
+    ).run("请先完成身份授权，再扫描 ClawBot 二维码。", nowIso(), session.id);
     stopBindingPoller(session.token);
     return;
   }

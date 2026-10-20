@@ -18,7 +18,9 @@ export function channelStatus() {
     ...gateway.status(),
     customerQrUrl: row.customer_qr_url,
     configuredMode: row.mode,
-    beichenConfigured: Boolean(env.beichen.appid && env.beichen.appkey),
+    oauthConfigured: Boolean(env.oauth.appid && env.oauth.appkey),
+    oauthProvider: env.oauth.provider,
+    beichenConfigured: Boolean(env.oauth.appid && env.oauth.appkey),
     publicBaseUrl: env.publicBaseUrl,
     protocol: "iLink Long Polling",
   };

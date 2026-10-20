@@ -113,7 +113,7 @@ export function InvitePage() {
               </span>
               <h3>扫码进入客户绑定</h3>
               <p>
-                客户扫码进入绑定页，先完成北辰身份授权，再扫描 ClawBot
+                客户扫码进入绑定页，先完成身份授权，再扫描 ClawBot
                 二维码完成绑定。
               </p>
             </div>
@@ -179,8 +179,8 @@ export function InvitePage() {
               </div>
               <div>
                 <span className="flow-num"><ShieldCheck size={16} /></span>
-                <strong>北辰身份授权</strong>
-                <p>通过北辰聚合登录获取头像、昵称与 social_uid。</p>
+                <strong>聚合身份授权</strong>
+                <p>通过聚合登录获取头像、昵称与 social_uid。</p>
               </div>
               <div>
                 <span className="flow-num"><ScanLine size={16} /></span>

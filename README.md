@@ -1,16 +1,18 @@
 # iLink ClawBot 客服通道系统
 
-面向单商家的 ClawBot 客户触达与真人客服后台。按《iLink ClawBot 客服通道系统 产品设计文档 v1.7》实现完整闭环：
+面向单商家的 ClawBot 客户触达与真人客服后台。按《iLink ClawBot 客服通道系统 产品设计文档 v1.8》实现完整闭环：
 
-- ClawBot 扫码绑定 + 北辰聚合登录身份补齐
+- ClawBot 扫码绑定 + 聚合登录身份补齐（默认素颜 suyanw，可切换北辰 beichenwl）
 - 客户列表、24 小时 + 10 条双重窗口、实时对话
 - 主动推送（含可达性预检与结果回执）
-- 保活策略、静默时段、每日上限、定时任务
+- 保活策略、静默时段、每日上限、cron 定时任务与运行记录
+- 文本、图片、文件三类消息的收发与历史回放
 - 仪表盘统计与趋势图表
 - v1.7 协议细节：40 秒长轮询、client_id 幂等、16KiB 文本分段、错误分类、Redis 共享状态、消息裁剪、Schema 版本化
-- v1.7 图片修复：出站图片的 `media.aes_key` 改为 base64(hex key)，修复微信端图片空白
+- v1.8 图片修复：图片 `media.aes_key` 使用 base64(原始 16 字节 key)，并按客户 `baseurl` 推导区域 CDN 节点，修复微信端图片空白
+- v1.8 聚合登录：环境变量改为 provider-neutral 的 `OAUTH_*`，旧的 `BEICHEN_*` 仍可读取
 
-开箱即用：默认使用内置的**演示通道**，不需要 iLink 或北辰凭证，也能完整体验"生成二维码 → 扫码 → 授权 → 出现在客户列表 → 对话 → 推送 → 保活"的全流程。
+开箱即用：默认使用内置的**演示通道**，不需要 iLink 或聚合登录凭证，也能完整体验"生成二维码 → 扫码 → 授权 → 出现在客户列表 → 对话 → 推送 → 保活"的全流程。
 
 ## 快速开始
 
@@ -50,7 +52,7 @@ npm start         # 后端同时托管 web/dist
 在 `.env` 设置 `ILINK_MODE=live`，或在「通道设置」切换到真实 iLink 通道。真实通道按客户独立绑定：
 
 1. 在「客户绑定」页生成专属绑定链接/二维码（10 分钟内有效）。
-2. 客户打开绑定页，先完成北辰聚合登录；后端创建状态为「待 ClawBot 绑定」的客户记录，但不在客户列表展示。
+2. 客户打开绑定页，先完成聚合登录；后端创建状态为「待 ClawBot 绑定」的客户记录，但不在客户列表展示。
 3. 授权完成后，页面展示 ClawBot 二维码。后端调用 `get_bot_qrcode`，并每 2 秒轮询 `get_qrcode_status`；二维码 3 分钟内有效，过期可刷新。
 4. 客户扫码确认后，后端把 `ilink_bot_id`、`baseurl`、`bot_token` 更新到同一客户记录，状态切换为 active，`bound_at`/`last_active_at` 设为当前时间，客户才进入客户列表。
 
@@ -71,17 +73,27 @@ npm start         # 后端同时托管 web/dist
 
 多节点部署需要共享数据库（PostgreSQL/MySQL）和 Redis；当前单机交付使用 SQLite，Redis 状态已接入，横向扩容时替换数据层即可。
 
-### 2. 北辰聚合登录
+### 2. 聚合登录（素颜 / 北辰）
 
-在 `.env` 填写 `BEICHEN_APPID`、`BEICHEN_APPKEY`，并确保北辰后台的授权回调地址为：
+在 `.env` 填写素颜聚合登录后台分配的应用凭证，并把回调地址配置为：
 
 ```
-${PUBLIC_BASE_URL}/api/oauth/beichen/callback
+${PUBLIC_BASE_URL}/api/oauth/callback
 ```
+
+```bash
+OAUTH_APPID=<素颜 appid>
+OAUTH_APPKEY=<素颜 appkey>
+OAUTH_LOGIN_TYPE=wx
+OAUTH_API_BASE=https://u.suyanw.cn
+OAUTH_PROVIDER=suyanw
+```
+
+如需继续使用北辰，把 `OAUTH_API_BASE` 改为 `https://u.beichenwl.cn`、`OAUTH_PROVIDER` 改为 `beichenwl`，并填写对应凭证即可。旧变量 `BEICHEN_APPID` / `BEICHEN_APPKEY` / `BEICHEN_LOGIN_TYPE` / `BEICHEN_API_BASE` 仍兼容，`OAUTH_*` 优先。旧授权路径 `/api/oauth/beichen/*` 会自动重定向到新路径，已发出的链接不会 404。
 
 未配置时自动使用内置演示授权页，不会访问外部服务。
 
-如需用真实手机联调，请把 `PUBLIC_BASE_URL` 与 `WEB_ORIGIN` 改成手机可访问的局域网 IP 或 HTTPS 域名，并确保手机与电脑在同一网络。北辰正式授权要求 HTTPS 回调地址；本地 `localhost` 只能用于演示授权。
+如需用真实手机联调，请把 `PUBLIC_BASE_URL` 与 `WEB_ORIGIN` 改成手机可访问的局域网 IP 或 HTTPS 域名，并确保手机与电脑在同一网络。聚合登录正式授权要求 HTTPS 回调地址；本地 `localhost` 只能用于演示授权。
 
 例如 macOS 上先执行 `ipconfig getifaddr en0` 获取局域网 IP，再把 `.env` 改为：
 
@@ -95,7 +107,7 @@ WEB_ORIGIN=http://192.168.1.23:5173
 ### 3. 生产注意事项
 
 - 必须修改 `SESSION_SECRET` 与 `ADMIN_PASSWORD`，并为 `ILINK_CREDENTIAL_KEY` 配置 32 字节随机密钥（hex）。
-- 使用 HTTPS 域名作为 `PUBLIC_BASE_URL`；北辰不接受 HTTP 回调。
+- 使用 HTTPS 域名作为 `PUBLIC_BASE_URL`；聚合登录提供商通常不接受 HTTP 回调。
 - 生产环境把 `WEB_ORIGIN` 设为与 `PUBLIC_BASE_URL` 相同的域名（例如 `https://cs.example.com`），否则授权完成后的页面会跳回开发端口。
 - SQLite 适用于单机部署。需要多实例时，将数据层替换为 PostgreSQL/MySQL，并把 Socket.IO 换成 Redis Adapter。
 
@@ -114,9 +126,11 @@ uploads/  图片消息与上传文件
 - **真实协议优先**：iLink 没有 Webhook，消息通过 `getupdates` 长轮询获取；出站消息必须携带入站消息的 `context_token`。实现遵循真实协议，而不是文档中的示意接口。
 - **窗口与配额**：客户每次发言同时重置 24 小时窗口和 10 条配额；任一耗尽即禁止主动发送，保活也计入配额。
 - **按客户 Bot**：每位客户扫码得到独立的 `ilink_bot_id` 与 `baseurl`，网关按客户维护长轮询游标和 Bot 凭证。
-- **先授权后绑定**：北辰回调先创建 `pending_clawbot` 记录；ClawBot 扫码确认后才写入 `ilink_bot_id` 并激活为 `active`，客户列表只展示已激活用户。
+- **先授权后绑定**：聚合登录回调先创建 `pending_clawbot` 记录；ClawBot 扫码确认后才写入 `ilink_bot_id` 并激活为 `active`，客户列表只展示已激活用户。
 - **游标表扩展**：`msg_cursor` 以 `ilink_bot_id` 为唯一键保存每个客户 Bot 的游标；这是按客户独立绑定模型对单行游标表的扩展。
-- **身份信息**：头像、昵称只来自北辰 OAuth；未完成授权的前台用户不会进入客户列表。
+- **身份信息**：头像、昵称只来自聚合登录 OAuth；未完成授权的前台用户不会进入客户列表。
+- **媒体消息**：图片和文件先经 AES-128-ECB 加密上传到 iLink 分区 CDN，再以 CDN 返回的媒体元信息发送；图片 `aes_key` 为 base64(原始 key)，文件为 base64(hex key)。
+- **定时保活**：`keepalive_schedules` 保存 cron、文案和媒体附件，调度结果写入 `keepalive_runs`，可在保活页查看最近触发记录。
 
 ## 主要页面
 
@@ -124,12 +138,12 @@ uploads/  图片消息与上传文件
 | --- | --- |
 | `/` | 仪表盘：核心指标、7 天趋势、最近对话 |
 | `/customers` | 客户列表：搜索、窗口过滤、ClawBot 失效标签、分页 |
-| `/workbench` | 对话工作台：实时消息、图片、24 小时 + 10 条倒计时 |
-| `/push` | 主动推送：收件人选择、16KiB 分段提示、结果回执 |
-| `/keepalive` | 保活设置：时间阈值、配额预警、文案、静默时段 |
+| `/workbench` | 对话工作台：实时消息、图片/文件、24 小时 + 10 条倒计时 |
+| `/push` | 主动推送：收件人选择、文本/图片/文件、16KiB 分段提示、结果回执 |
+| `/keepalive` | 保活设置：时间阈值、配额预警、文案、静默时段、cron 定时任务 |
 | `/invite` | 客户绑定：专属二维码、最近绑定记录 |
 | `/settings/channel` | 通道状态：演示/真实模式、客户 Bot 数量、协议说明 |
-| `/bind` | 客户侧绑定页：先北辰授权，再展示 ClawBot 二维码并激活 |
+| `/bind` | 客户侧绑定页：先聚合登录授权，再展示 ClawBot 二维码并激活 |
 
 ## 验证
 
@@ -139,4 +153,4 @@ npm test
 npm run build
 ```
 
-后端测试覆盖登录鉴权、完整绑定与 OAuth 流程、24 小时窗口、10 条配额、推送可达性、保活变量与静默时段。
+后端测试覆盖登录鉴权、完整绑定与 OAuth 流程（含旧路径重定向）、24 小时窗口、10 条配额、媒体消息持久化、CDN 区域推导与 aes_key 编码、推送可达性、保活变量与静默时段。

@@ -19,8 +19,11 @@ import { addHours, isWindowOpen, windowRemainingSeconds } from "../util/time.js"
 
 export interface OutboundInput {
   content: string;
-  msgType?: "text" | "image" | "template" | "system";
+  msgType?: "text" | "image" | "file" | "template" | "system";
   mediaUrl?: string | null;
+  mediaName?: string | null;
+  mediaSize?: number | null;
+  mediaMime?: string | null;
   isKeepalive?: boolean;
   allowPending?: boolean;
   skipQuota?: boolean;
@@ -87,7 +90,8 @@ export function insertInbound(userId: number, event: InboundEvent): MessageRow |
   }
   const now = new Date().toISOString();
   const at = event.at || now;
-  const images = event.images;
+  const images = event.images ?? [];
+  const files = event.files ?? [];
   const text = event.text.trim();
 
   const tx = db.transaction(() => {
@@ -115,34 +119,64 @@ export function insertInbound(userId: number, event: InboundEvent): MessageRow |
       }
     }
 
-    const items = images.length
-      ? images.map((image) => ({
-          type: "image" as const,
-          content: text || "图片",
-          media: image.url,
-        }))
-      : [{ type: "text" as const, content: text, media: null }];
+    const items: Array<{
+      type: "text" | "image" | "file";
+      content: string;
+      media: string | null;
+      mediaName?: string | null;
+      mediaSize?: number | null;
+      mediaMime?: string | null;
+    }> = [];
+    images.forEach((image, index) => {
+      items.push({
+        type: "image",
+        content: index === 0 && text ? text : "图片",
+        media: image.url,
+        mediaName: "图片",
+        mediaMime: null,
+      });
+    });
+    files.forEach((file, index) => {
+      items.push({
+        type: "file",
+        content: index === 0 && text ? text : file.name,
+        media: file.url,
+        mediaName: file.name,
+        mediaSize: file.size,
+        mediaMime: file.mime,
+      });
+    });
+    if (!items.length) {
+      items.push({ type: "text", content: text, media: null });
+    }
 
     const inserted: MessageRow[] = [];
     items.forEach((item, index) => {
       const info = db
         .prepare(
           `INSERT INTO messages
-            (user_id, direction, msg_type, content, media_url, message_id, ilink_msg_id,
+            (user_id, direction, msg_type, content, media_url, media_name, media_size,
+             media_mime, message_id, ilink_msg_id,
              content_json, is_keepalive, is_read, consumed_quota, delivery_status, sent_at)
-           VALUES (?, 'inbound', ?, ?, ?, ?, ?, ?, 0, 0, 0, 'delivered', ?)`,
+           VALUES (?, 'inbound', ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, 0, 'delivered', ?)`,
         )
         .run(
           userId,
           item.type,
           item.content,
           item.media,
+          item.mediaName ?? null,
+          item.mediaSize ?? null,
+          item.mediaMime ?? null,
           event.messageId ? `${event.messageId}${index ? `_${index}` : ""}` : null,
           event.ilinkMsgId ? `${event.ilinkMsgId}${index ? `_${index}` : ""}` : null,
           JSON.stringify({
             text: item.content,
             type: item.type,
             mediaUrl: item.media,
+            mediaName: item.mediaName ?? null,
+            mediaSize: item.mediaSize ?? null,
+            mediaMime: item.mediaMime ?? null,
             clientId: event.clientId,
           }),
           at,
@@ -232,15 +266,15 @@ export function listMessages(userId: number, beforeId?: number, limit = 30) {
 
 function resolveMediaPath(url: string): string {
   if (!url.startsWith("/uploads/")) {
-    throw new AppError(400, "INVALID_MEDIA", "图片地址无效。");
+    throw new AppError(400, "INVALID_MEDIA", "媒体地址无效。");
   }
   const relative = url.replace(/^\/uploads\//, "");
   const absolute = path.resolve(env.uploadDir, relative);
   if (!absolute.startsWith(path.resolve(env.uploadDir))) {
-    throw new AppError(400, "INVALID_MEDIA", "图片地址无效。");
+    throw new AppError(400, "INVALID_MEDIA", "媒体地址无效。");
   }
   if (!fs.existsSync(absolute)) {
-    throw new AppError(400, "INVALID_MEDIA", "图片文件不存在，请重新上传。");
+    throw new AppError(400, "INVALID_MEDIA", "媒体文件不存在，请重新上传。");
   }
   return absolute;
 }
@@ -257,12 +291,13 @@ export async function sendOutbound(
     throw new AppError(409, "USER_UNBOUND", "该客户已解绑 ClawBot。");
   }
   const msgType = input.msgType ?? "text";
-  const content = input.content.trim();
-  if (msgType !== "image" && !content) {
+  const content =
+    input.content.trim() || (msgType === "file" ? input.mediaName ?? "文件" : "");
+  if (msgType !== "image" && msgType !== "file" && !content) {
     throw new AppError(400, "EMPTY_MESSAGE", "消息内容不能为空。");
   }
-  if (msgType === "image" && !input.mediaUrl) {
-    throw new AppError(400, "MEDIA_REQUIRED", "请先上传图片。");
+  if ((msgType === "image" || msgType === "file") && !input.mediaUrl) {
+    throw new AppError(400, "MEDIA_REQUIRED", "请先上传媒体文件。");
   }
   if (user.account_status === "session_expired") {
     throw new AppError(400, "ERR_BOT_INVALID", "ClawBot 登录已失效，请客户重新扫码绑定。");
@@ -276,7 +311,9 @@ export async function sendOutbound(
     );
   }
   const segments =
-    msgType === "image" ? [content] : splitTextByBytes(content, 16_384);
+    msgType === "image" || msgType === "file"
+      ? [content]
+      : splitTextByBytes(content, 16_384);
   if (msgType === "image" && utf8Bytes(content) > 16_384) {
     throw new AppError(400, "MESSAGE_TOO_LONG", "图片说明不能超过 16384 字节。");
   }
@@ -304,19 +341,25 @@ export async function sendOutbound(
     const info = db
       .prepare(
         `INSERT INTO messages
-          (user_id, direction, msg_type, content, media_url, message_id, client_id,
-           content_json, is_keepalive, is_read, consumed_quota, delivery_status, error, sent_at)
-         VALUES (?, 'outbound', ?, ?, ?, NULL, ?, ?, ?, 1, ?, ?, ?, ?)`,
+          (user_id, direction, msg_type, content, media_url, media_name, media_size,
+           media_mime, message_id, client_id, content_json, is_keepalive, is_read,
+           consumed_quota, delivery_status, error, sent_at)
+         VALUES (?, 'outbound', ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, 1, ?, ?, ?, ?)`,
       )
       .run(
         userId,
         msgType,
         params.content,
         input.mediaUrl ?? null,
+        input.mediaName ?? null,
+        input.mediaSize ?? null,
+        input.mediaMime ?? null,
         params.clientId,
         JSON.stringify({
           text: params.content,
           mediaUrl: input.mediaUrl ?? null,
+          mediaName: input.mediaName ?? null,
+          mediaMime: input.mediaMime ?? null,
           clientId: params.clientId,
         }),
         input.isKeepalive ? 1 : 0,
@@ -332,7 +375,15 @@ export async function sendOutbound(
     const segment = segments[index]!;
     let clientId: string | null = null;
     try {
-      if (msgType === "image" && input.mediaUrl) {
+      if (msgType === "file" && input.mediaUrl) {
+        const filePath = resolveMediaPath(input.mediaUrl);
+        clientId = await gateway.sendFile(
+          getUserById(userId),
+          filePath,
+          input.mediaName ?? "file",
+          content && content !== input.mediaName ? content : undefined,
+        );
+      } else if (msgType === "image" && input.mediaUrl) {
         const filePath = resolveMediaPath(input.mediaUrl);
         clientId = await gateway.sendImage(getUserById(userId), filePath, content || undefined);
       } else {

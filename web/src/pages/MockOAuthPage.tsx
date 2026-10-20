@@ -6,7 +6,7 @@ export function MockOAuthPage() {
   const state = params.get("state") ?? "";
 
   const authorize = () => {
-    window.location.href = `/api/oauth/beichen/callback?state=${encodeURIComponent(
+    window.location.href = `/api/oauth/callback?state=${encodeURIComponent(
       state,
     )}&code=mock_authorization_code&type=wx`;
   };
@@ -38,7 +38,7 @@ export function MockOAuthPage() {
         <div className="oauth-security">
           <ShieldCheck size={16} />
           <p>
-            本页面为演示授权页。正式环境会跳转至北辰聚合登录，仅获取公开资料，
+            本页面为演示授权页。正式环境会跳转至聚合登录，仅获取公开资料，
             不会读取聊天记录或微信密码。
           </p>
         </div>
@@ -51,7 +51,7 @@ export function MockOAuthPage() {
         </button>
         <div className="oauth-foot">
           <LockKeyhole size={13} />
-          北辰聚合登录提供安全授权
+          聚合登录提供安全授权
         </div>
       </div>
     </div>

@@ -18,7 +18,9 @@ import {
 import { handleInbound } from "../services/messages.js";
 import { getBoundUser } from "../services/users.js";
 
-const ALLOWED = new Set(["image/png", "image/jpeg", "image/webp", "image/gif"]);
+const ALLOWED_IMAGES = new Set(["image/png", "image/jpeg", "image/webp", "image/gif"]);
+const IMAGE_MAX_BYTES = 8 * 1024 * 1024;
+const FILE_MAX_BYTES = 20 * 1024 * 1024;
 
 export async function registerChannelRoutes(app: FastifyInstance): Promise<void> {
   app.get("/api/channel", { preHandler: requireAdmin }, async () => channelStatus());
@@ -60,6 +62,7 @@ export async function registerChannelRoutes(app: FastifyInstance): Promise<void>
       openid: user.clawbot_openid,
       text: body.content,
       images: [],
+      files: [],
       contextToken: `ctx_demo_${crypto.randomBytes(6).toString("hex")}`,
       ilinkMsgId: `demo_manual_${crypto.randomUUID()}`,
       messageId: null,
@@ -71,32 +74,44 @@ export async function registerChannelRoutes(app: FastifyInstance): Promise<void>
 
   app.post("/api/uploads", { preHandler: requireAdmin }, async (request) => {
     const file = await request.file();
-    if (!file) throw new AppError(400, "NO_FILE", "请选择要上传的图片。");
-    if (!ALLOWED.has(file.mimetype)) {
+    if (!file) throw new AppError(400, "NO_FILE", "请选择要上传的文件。");
+    const isImage = ALLOWED_IMAGES.has(file.mimetype);
+    const buffer = await file.toBuffer();
+    if (file.mimetype.startsWith("image/") && !isImage) {
       throw new AppError(415, "UNSUPPORTED_MEDIA", "仅支持 PNG、JPG、WEBP、GIF 图片。");
     }
-    const buffer = await file.toBuffer();
-    if (buffer.length > 8 * 1024 * 1024) {
-      throw new AppError(413, "FILE_TOO_LARGE", "图片不能超过 8MB。");
+    const limit = isImage ? IMAGE_MAX_BYTES : FILE_MAX_BYTES;
+    if (buffer.length > limit) {
+      throw new AppError(
+        413,
+        "FILE_TOO_LARGE",
+        isImage ? "图片不能超过 8MB。" : "文件不能超过 20MB。",
+      );
     }
-    const ext =
-      file.mimetype === "image/png"
+    const originalName = path.basename(file.filename || "file");
+    const ext = isImage
+      ? file.mimetype === "image/png"
         ? "png"
         : file.mimetype === "image/jpeg"
           ? "jpg"
           : file.mimetype === "image/webp"
             ? "webp"
-            : "gif";
+            : "gif"
+      : path.extname(originalName).slice(0, 16).replace(/[^.\w-]/g, "") || ".bin";
     const now = new Date();
     const folder = `${now.getUTCFullYear()}${String(now.getUTCMonth() + 1).padStart(2, "0")}`;
     const dir = path.join(env.uploadDir, folder);
     fs.mkdirSync(dir, { recursive: true });
-    const name = `${Date.now()}-${crypto.randomBytes(6).toString("hex")}.${ext}`;
-    fs.writeFileSync(path.join(dir, name), buffer);
+    const stored = `${Date.now()}-${crypto.randomBytes(6).toString("hex")}${
+      ext.startsWith(".") ? ext : `.${ext}`
+    }`;
+    fs.writeFileSync(path.join(dir, stored), buffer);
     return {
-      url: `/uploads/${folder}/${name}`,
+      url: `/uploads/${folder}/${stored}`,
+      name: originalName,
       size: buffer.length,
       mimeType: file.mimetype,
+      isImage,
     };
   });
 }

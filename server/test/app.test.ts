@@ -21,7 +21,7 @@ const { isSilentNow, windowRemainingSeconds, addHours } = await import("../src/u
 const { renderKeepaliveTemplate, runKeepalive, getKeepaliveConfig, evaluateCandidate } = await import(
   "../src/services/keepalive.js"
 );
-const { splitTextByBytes } = await import("../src/services/messages.js");
+const { splitTextByBytes, insertInbound } = await import("../src/services/messages.js");
 
 const db = openDatabase();
 seedDemoData(db, { force: true });
@@ -131,13 +131,13 @@ describe("binding and beichen oauth", () => {
     });
     const initialBody = JSON.parse(initial.body);
     expect(initialBody.status).toBe("awaiting_oauth");
-    expect(initialBody.oauthUrl).toContain("/api/oauth/beichen/entry?state=");
+    expect(initialBody.oauthUrl).toContain("/api/oauth/entry?state=");
 
     const state = new URL(initialBody.oauthUrl).searchParams.get("state");
     expect(state).toBeTruthy();
     const callback = await app.inject({
       method: "GET",
-      url: `/api/oauth/beichen/callback?state=${encodeURIComponent(state!)}&code=demo-code&type=wx&format=json`,
+      url: `/api/oauth/callback?state=${encodeURIComponent(state!)}&code=demo-code&type=wx&format=json`,
     });
     expect(callback.statusCode).toBe(200);
     const result = JSON.parse(callback.body);
@@ -197,10 +197,34 @@ describe("binding and beichen oauth", () => {
   it("rejects an invalid oauth state", async () => {
     const response = await app.inject({
       method: "GET",
-      url: "/api/oauth/beichen/callback?state=not-a-real-state&code=x&format=json",
+      url: "/api/oauth/callback?state=not-a-real-state&code=x&format=json",
     });
     expect(response.statusCode).toBe(400);
     expect(JSON.parse(response.body).error.code).toBe("INVALID_STATE");
+  });
+
+  it("redirects legacy branded oauth routes to the provider-neutral paths", async () => {
+    const entry = await app.inject({
+      method: "GET",
+      url: "/api/oauth/beichen/entry?state=abcdefgh",
+    });
+    expect(entry.statusCode).toBe(302);
+    expect(entry.headers.location).toBe("/api/oauth/entry?state=abcdefgh");
+
+    const callback = await app.inject({
+      method: "GET",
+      url: "/api/oauth/beichen/callback?state=abcdefgh&code=code-1&type=wx",
+    });
+    expect(callback.statusCode).toBe(302);
+    expect(callback.headers.location).toBe(
+      "/api/oauth/callback?state=abcdefgh&code=code-1&type=wx",
+    );
+  });
+
+  it("exposes the configured oauth provider", async () => {
+    const response = await app.inject({ method: "GET", url: "/api/system/info" });
+    expect(response.statusCode).toBe(200);
+    expect(JSON.parse(response.body).oauthProvider).toBe("suyanw");
   });
 });
 
@@ -371,5 +395,104 @@ describe("push and keepalive", () => {
     const lastActive = new Date(Date.now() - 60 * 60 * 1000).toISOString();
     expect(windowRemainingSeconds(lastActive)).toBeGreaterThan(82_000);
     expect(windowRemainingSeconds(addHours(new Date(), -25))).toBe(0);
+  });
+
+  it("creates, toggles and deletes scheduled keepalive tasks", async () => {
+    const created = await app.inject({
+      method: "POST",
+      url: "/api/keepalive/schedules",
+      headers: authHeaders(),
+      payload: {
+        cronExpr: "0 10 * * *",
+        message: "您好{nickname_suffix}，今天需要帮忙吗？",
+        mediaType: "text",
+      },
+    });
+    expect(created.statusCode).toBe(200);
+    const item = JSON.parse(created.body).item;
+    expect(item.cron_expr).toBe("0 10 * * *");
+
+    const toggled = await app.inject({
+      method: "PATCH",
+      url: `/api/keepalive/schedules/${item.id}`,
+      headers: authHeaders(),
+      payload: { enabled: false },
+    });
+    expect(toggled.statusCode).toBe(200);
+    expect(JSON.parse(toggled.body).item.enabled).toBe(0);
+
+    const deleted = await app.inject({
+      method: "DELETE",
+      url: `/api/keepalive/schedules/${item.id}`,
+      headers: authHeaders(),
+    });
+    expect(deleted.statusCode).toBe(200);
+  });
+});
+
+describe("media messages", () => {
+  it("persists inbound files with their media metadata", () => {
+    const row = insertInbound(2, {
+      openid: "demo_openid_2",
+      text: "这是合同",
+      images: [],
+      files: [
+        {
+          url: "/uploads/inbound/files/contract.pdf",
+          filePath: "/tmp/contract.pdf",
+          name: "contract.pdf",
+          size: 2048,
+          mime: "application/pdf",
+        },
+      ],
+      contextToken: "ctx_media_test",
+      ilinkMsgId: "ilink_media_test_1",
+      messageId: "media_test_1",
+      clientId: null,
+      at: new Date().toISOString(),
+    });
+    expect(row).toBeTruthy();
+    expect(row!.msg_type).toBe("file");
+    expect(row!.content).toBe("这是合同");
+    expect(row!.media_url).toBe("/uploads/inbound/files/contract.pdf");
+    expect(row!.media_name).toBe("contract.pdf");
+    expect(row!.media_size).toBe(2048);
+    expect(row!.media_mime).toBe("application/pdf");
+  });
+
+  it("requires media for file pushes", async () => {
+    const response = await app.inject({
+      method: "POST",
+      url: "/api/push",
+      headers: authHeaders(),
+      payload: { userIds: [2], content: "", msgType: "file" },
+    });
+    expect(response.statusCode).toBe(400);
+    expect(JSON.parse(response.body).error.code).toBe("MEDIA_REQUIRED");
+  });
+
+  it("sends and records an outbound file message in demo mode", async () => {
+    const uploadDir = process.env.UPLOAD_DIR!;
+    fs.mkdirSync(uploadDir, { recursive: true });
+    fs.writeFileSync(path.join(uploadDir, "quote.txt"), "hello file");
+    const response = await app.inject({
+      method: "POST",
+      url: "/api/users/2/messages",
+      headers: authHeaders(),
+      payload: {
+        content: "报价单请查收",
+        msgType: "file",
+        mediaUrl: "/uploads/quote.txt",
+        mediaName: "报价单.txt",
+        mediaSize: 10,
+        mediaMime: "text/plain",
+      },
+    });
+    expect(response.statusCode).toBe(200);
+    const message = JSON.parse(response.body).message;
+    expect(message.type).toBe("file");
+    expect(message.mediaName).toBe("报价单.txt");
+    expect(message.mediaMime).toBe("text/plain");
+    expect(message.content).toBe("报价单请查收");
   });
 });

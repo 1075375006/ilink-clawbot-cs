@@ -44,11 +44,23 @@ export async function api<T>(
   return payload as T;
 }
 
-export function uploadImage(file: File): Promise<{ url: string; size: number }> {
+export interface UploadResult {
+  url: string;
+  name: string;
+  size: number;
+  mimeType: string;
+  isImage: boolean;
+}
+
+export function uploadFile(file: File): Promise<UploadResult> {
   const form = new FormData();
   form.append("file", file);
-  return api<{ url: string; size: number }>("/api/uploads", {
+  return api<UploadResult>("/api/uploads", {
     method: "POST",
     body: form,
   });
+}
+
+export function uploadImage(file: File): Promise<UploadResult> {
+  return uploadFile(file);
 }

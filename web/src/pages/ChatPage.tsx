@@ -12,11 +12,13 @@ import {
   CheckCheck,
   Clock3,
   Copy,
-  Image as ImageIcon,
+  Download,
+  FileText,
   Info,
   Loader2,
   MessageCircle,
   MoreHorizontal,
+  Paperclip,
   Pencil,
   RefreshCw,
   Search,
@@ -26,7 +28,7 @@ import {
   X,
 } from "lucide-react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
-import { ApiError, api, uploadImage } from "../api";
+import { ApiError, api, uploadFile, type UploadResult } from "../api";
 import type { Message, User } from "../types";
 import {
   dayjs,
@@ -82,7 +84,7 @@ function MessageBubble({
         ) : null}
         <div
           className={`bubble ${mine ? "bubble-out" : "bubble-in"} ${
-            message.type === "image" ? "bubble-media" : ""
+            message.type === "image" || message.type === "file" ? "bubble-media" : ""
           }`}
         >
           {message.type === "image" && message.mediaUrl ? (
@@ -90,7 +92,31 @@ function MessageBubble({
               <img src={message.mediaUrl} alt="聊天图片" />
             </button>
           ) : null}
-          {message.content && message.content !== "图片" ? <p>{message.content}</p> : null}
+          {message.type === "file" && message.mediaUrl ? (
+            <a
+              className="chat-file"
+              href={message.mediaUrl}
+              download={message.mediaName ?? undefined}
+              target="_blank"
+              rel="noreferrer"
+            >
+              <span className="chat-file-icon">
+                <FileText size={18} />
+              </span>
+              <span className="chat-file-meta">
+                <strong>{message.mediaName || message.content || "文件"}</strong>
+                {message.mediaSize ? (
+                  <small>{Math.max(1, Math.round(message.mediaSize / 1024))} KB</small>
+                ) : null}
+              </span>
+              <Download size={15} />
+            </a>
+          ) : null}
+          {message.content &&
+          message.content !== "图片" &&
+          message.content !== message.mediaName ? (
+            <p>{message.content}</p>
+          ) : null}
         </div>
         <div className={`bubble-meta ${mine ? "align-right" : ""}`}>
           <span>{dayjs(message.sentAt).format("HH:mm")}</span>
@@ -120,7 +146,7 @@ export function ChatPage() {
   const selectedId = id ? Number(id) : null;
   const [search, setSearch] = useState("");
   const [draft, setDraft] = useState("");
-  const [pendingImage, setPendingImage] = useState<{ url: string; name: string } | null>(null);
+  const [pendingMedia, setPendingMedia] = useState<UploadResult | null>(null);
   const [uploading, setUploading] = useState(false);
   const [lightbox, setLightbox] = useState<string | null>(null);
   const [simulateOpen, setSimulateOpen] = useState(false);
@@ -182,7 +208,7 @@ export function ChatPage() {
   useEffect(() => {
     if (!selectedId) return;
     setDraft("");
-    setPendingImage(null);
+    setPendingMedia(null);
     setMenuOpen(false);
     setRemarkEditing(false);
   }, [selectedId, queryClient]);
@@ -223,21 +249,29 @@ export function ChatPage() {
   const sendMutation = useMutation({
     mutationFn: async () => {
       if (!selectedId) throw new Error("未选择客户");
-      if (!draft.trim() && !pendingImage) {
+      if (!draft.trim() && !pendingMedia) {
         throw new ApiError(400, "EMPTY_MESSAGE", "请输入消息内容。");
       }
+      const msgType = pendingMedia
+        ? pendingMedia.isImage
+          ? "image"
+          : "file"
+        : "text";
       return api<{ message: Message }>(`/api/users/${selectedId}/messages`, {
         method: "POST",
         json: {
           content: draft.trim(),
-          msgType: pendingImage ? "image" : "text",
-          mediaUrl: pendingImage?.url ?? null,
+          msgType,
+          mediaUrl: pendingMedia?.url ?? null,
+          mediaName: pendingMedia?.name ?? null,
+          mediaSize: pendingMedia?.size ?? null,
+          mediaMime: pendingMedia?.mimeType ?? null,
         },
       });
     },
     onSuccess: () => {
       setDraft("");
-      setPendingImage(null);
+      setPendingMedia(null);
       atBottomRef.current = true;
       queryClient.invalidateQueries({ queryKey: ["messages", selectedId] });
       queryClient.invalidateQueries({ queryKey: ["user", selectedId] });
@@ -301,18 +335,19 @@ export function ChatPage() {
     const file = event.target.files?.[0];
     event.target.value = "";
     if (!file) return;
-    if (!["image/png", "image/jpeg", "image/webp", "image/gif"].includes(file.type)) {
+    const isImage = ["image/png", "image/jpeg", "image/webp", "image/gif"].includes(file.type);
+    if (file.type.startsWith("image/") && !isImage) {
       toast("仅支持 PNG / JPG / WEBP / GIF 图片", "error");
       return;
     }
-    if (file.size > 8 * 1024 * 1024) {
-      toast("图片不能超过 8MB", "error");
+    if (file.size > (isImage ? 8 : 20) * 1024 * 1024) {
+      toast(isImage ? "图片不能超过 8MB" : "文件不能超过 20MB", "error");
       return;
     }
     setUploading(true);
     try {
-      const result = await uploadImage(file);
-      setPendingImage({ url: result.url, name: file.name });
+      const result = await uploadFile(file);
+      setPendingMedia(result);
     } catch (error) {
       toast(error instanceof Error ? error.message : "上传失败", "error");
     } finally {
@@ -322,7 +357,7 @@ export function ChatPage() {
 
   const submit = () => {
     if (sendMutation.isPending || uploading) return;
-    if (!draft.trim() && !pendingImage) return;
+    if (!draft.trim() && !pendingMedia) return;
     sendMutation.mutate();
   };
 
@@ -592,10 +627,20 @@ export function ChatPage() {
             ) : null}
 
             <footer className="composer">
-              {pendingImage ? (
-                <div className="pending-image">
-                  <img src={pendingImage.url} alt={pendingImage.name} />
-                  <button type="button" onClick={() => setPendingImage(null)} aria-label="移除图片">
+              {pendingMedia ? (
+                <div className={`pending-image ${pendingMedia.isImage ? "" : "pending-file"}`}>
+                  {pendingMedia.isImage ? (
+                    <img src={pendingMedia.url} alt={pendingMedia.name} />
+                  ) : (
+                    <span className="pending-file-chip">
+                      <FileText size={16} />
+                      <span>
+                        <strong>{pendingMedia.name}</strong>
+                        <small>{Math.max(1, Math.round(pendingMedia.size / 1024))} KB</small>
+                      </span>
+                    </span>
+                  )}
+                  <button type="button" onClick={() => setPendingMedia(null)} aria-label="移除附件">
                     <X size={14} />
                   </button>
                 </div>
@@ -623,7 +668,6 @@ export function ChatPage() {
                   <input
                     ref={fileRef}
                     type="file"
-                    accept="image/png,image/jpeg,image/webp,image/gif"
                     hidden
                     onChange={upload}
                   />
@@ -632,9 +676,9 @@ export function ChatPage() {
                     className="tool-btn"
                     onClick={() => fileRef.current?.click()}
                     disabled={inputDisabled || uploading}
-                    title="发送图片"
+                    title="发送图片或文件"
                   >
-                    {uploading ? <Loader2 size={17} className="spin" /> : <ImageIcon size={17} />}
+                    {uploading ? <Loader2 size={17} className="spin" /> : <Paperclip size={17} />}
                   </button>
                   <span className="composer-hint">
                     {draft.length > 0
@@ -644,7 +688,7 @@ export function ChatPage() {
                             new TextEncoder().encode(draft).length / 16384,
                           ),
                         )} 段`
-                      : "支持图片与文字"}
+                      : "支持文字、图片与文件"}
                   </span>
                   <span className="window-usage">
                     本次窗口已用 <strong>{user.replyUsed}/10</strong> 条
@@ -652,7 +696,7 @@ export function ChatPage() {
                   <button
                     type="button"
                     className="send-btn"
-                    disabled={inputDisabled || sendMutation.isPending || (!draft.trim() && !pendingImage)}
+                    disabled={inputDisabled || sendMutation.isPending || (!draft.trim() && !pendingMedia)}
                     onClick={submit}
                   >
                     {sendMutation.isPending ? <Loader2 size={17} className="spin" /> : <Send size={17} />}
@@ -777,7 +821,7 @@ export function ChatPage() {
           <div className="panel-section panel-section-last">
             <div className="trust-note">
               <ShieldCheck size={15} />
-              <span>头像与昵称来自北辰授权，仅在绑定时获取。</span>
+              <span>头像与昵称来自聚合登录授权，仅在绑定时获取。</span>
             </div>
           </div>
         </aside>

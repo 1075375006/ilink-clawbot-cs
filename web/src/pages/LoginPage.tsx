@@ -61,7 +61,7 @@ export function LoginPage() {
           <div className="login-points">
             <div>
               <ShieldCheck size={18} />
-              <span>北辰授权补齐头像昵称，身份清晰可辨</span>
+              <span>聚合登录授权补齐头像昵称，身份清晰可辨</span>
             </div>
             <div>
               <MessageCircle size={18} />

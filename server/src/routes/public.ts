@@ -2,7 +2,7 @@ import crypto from "node:crypto";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { getDb } from "../db.js";
-import { env, isBeichenConfigured } from "../env.js";
+import { env, isOAuthConfigured } from "../env.js";
 import { AppError } from "../errors.js";
 import { requireAdmin } from "../auth.js";
 import {
@@ -114,13 +114,18 @@ export async function registerPublicRoutes(app: FastifyInstance): Promise<void> 
     return refreshClawbotQr(token);
   });
 
-  app.get("/api/oauth/beichen/entry", async (request, reply) => {
+  app.get("/api/oauth/entry", async (request, reply) => {
     const query = z.object({ state: z.string().min(8) }).parse(request.query);
     const target = await resolveOAuthRedirect(query.state);
     return reply.redirect(target);
   });
 
-  app.get("/api/oauth/beichen/callback", async (request, reply) => {
+  app.get("/api/oauth/beichen/entry", async (request, reply) => {
+    const query = z.object({ state: z.string().min(8) }).parse(request.query);
+    return reply.redirect(`/api/oauth/entry?state=${encodeURIComponent(query.state)}`);
+  });
+
+  app.get("/api/oauth/callback", async (request, reply) => {
     const query = z
       .object({
         state: z.string().min(8),
@@ -139,6 +144,21 @@ export async function registerPublicRoutes(app: FastifyInstance): Promise<void> 
     }
     const base = (env.webOrigin || env.publicBaseUrl).replace(/\/+$/, "");
     return reply.redirect(`${base}/bind?token=${encodeURIComponent(result.token)}`);
+  });
+
+  app.get("/api/oauth/beichen/callback", async (request, reply) => {
+    const query = z
+      .object({
+        state: z.string().min(8),
+        code: z.string().min(1),
+        type: z.string().optional(),
+        format: z.string().optional(),
+      })
+      .parse(request.query);
+    const params = new URLSearchParams({ state: query.state, code: query.code });
+    if (query.type) params.set("type", query.type);
+    if (query.format) params.set("format", query.format);
+    return reply.redirect(`/api/oauth/callback?${params.toString()}`);
   });
 
   app.get("/api/avatar/:name", async (request, reply) => {
@@ -171,7 +191,8 @@ export async function registerPublicRoutes(app: FastifyInstance): Promise<void> 
   });
 
   app.get("/api/system/info", async () => ({
-    demoMode: !isBeichenConfigured,
+    demoMode: !isOAuthConfigured,
+    oauthProvider: env.oauth.provider,
     channel: channelStatus(),
   }));
 }

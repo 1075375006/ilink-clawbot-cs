@@ -9,6 +9,7 @@ import {
   CDN_BASE_URL,
   aesEcbPaddedSize,
   downloadMediaFromItem,
+  getMimeFromFilename,
   uploadBufferToCdn,
   type MessageItem,
   type WeixinMessage,
@@ -19,7 +20,7 @@ import { getDb } from "../db.js";
 import { decryptSecret, encryptSecret } from "../util/crypto.js";
 import { emitToAdmins } from "../realtime.js";
 import { IlinkApi, IlinkSessionExpiredError } from "./api.js";
-import { encodeImageAesKey } from "./media.js";
+import { cdnBaseUrlForBot, encodeFileAesKey, encodeImageAesKey } from "./media.js";
 import { contextTokenKey, cursorKey, redisGet, redisSetEx } from "../redis.js";
 
 export interface InboundImage {
@@ -27,10 +28,19 @@ export interface InboundImage {
   filePath: string;
 }
 
+export interface InboundFile {
+  url: string;
+  filePath: string;
+  name: string;
+  size: number;
+  mime: string;
+}
+
 export interface InboundEvent {
   openid: string;
   text: string;
   images: InboundImage[];
+  files: InboundFile[];
   contextToken: string | null;
   ilinkMsgId: string | null;
   messageId: string | null;
@@ -442,7 +452,7 @@ export class IlinkGateway {
       buf,
       uploadParam: upload.upload_param,
       filekey,
-      cdnBaseUrl: CDN_BASE_URL,
+      cdnBaseUrl: cdnBaseUrlForBot(user.baseurl || env.ilink.baseUrl),
       aeskey,
     });
     const items: MessageItem[] = [];
@@ -484,18 +494,87 @@ export class IlinkGateway {
     if (config.typing_ticket) await api.sendTyping(to, config.typing_ticket, 1);
   }
 
+  async sendFile(
+    user: UserRow,
+    filePath: string,
+    fileName: string,
+    caption?: string,
+  ): Promise<string | null> {
+    if (user.status !== "bound") {
+      throw new Error("客户尚未完成身份绑定，暂时无法发送文件。");
+    }
+    const channel = this.getChannel();
+    if (channel.mode === "demo") {
+      await new Promise((resolve) => setTimeout(resolve, 120));
+      return `demo_file_${crypto.randomUUID()}`;
+    }
+    const api = this.userApi(user);
+    if (!api) throw new Error("该客户的 ClawBot 通道尚未建立，请重新扫码绑定。");
+    const to = this.userTarget(user);
+    const token =
+      user.context_token ||
+      (await redisGet(contextTokenKey(user.ilink_bot_id ?? `user-${user.id}`, to)));
+    if (!token) throw new Error("缺少会话上下文，需要客户先发送一条消息。");
+    void redisSetEx(
+      contextTokenKey(user.ilink_bot_id ?? `user-${user.id}`, to),
+      token,
+      86_400,
+    );
+    const buf = fs.readFileSync(filePath);
+    const rawsize = buf.length;
+    const rawfilemd5 = crypto.createHash("md5").update(buf).digest("hex");
+    const filesize = aesEcbPaddedSize(rawsize);
+    const filekey = crypto.randomBytes(16).toString("hex");
+    const aeskey = crypto.randomBytes(16);
+    const upload = await api.getUploadUrl({
+      filekey,
+      media_type: 3,
+      to_user_id: to,
+      rawsize,
+      rawfilemd5,
+      filesize,
+      no_need_thumb: true,
+      aeskey: aeskey.toString("hex"),
+    });
+    if (!upload.upload_param) throw new Error("iLink 未返回文件上传地址。");
+    const { downloadParam } = await uploadBufferToCdn({
+      buf,
+      uploadParam: upload.upload_param,
+      filekey,
+      cdnBaseUrl: cdnBaseUrlForBot(user.baseurl || env.ilink.baseUrl),
+      aeskey,
+    });
+    const items: MessageItem[] = [];
+    if (caption) {
+      items.push({ type: MessageItemType.TEXT, text_item: { text: caption } });
+    }
+    items.push({
+      type: MessageItemType.FILE,
+      file_item: {
+        media: {
+          encrypt_query_param: downloadParam,
+          aes_key: encodeFileAesKey(aeskey),
+          encrypt_type: 1,
+        },
+        file_name: fileName,
+        len: String(rawsize),
+      },
+    });
+    return api.sendItems(to, items, token);
+  }
+
   async sendSystemText(user: UserRow, content: string): Promise<void> {
     const channel = this.getChannel();
     if (channel.mode === "demo") return;
     await this.sendText(user, content);
   }
 
-  async downloadImages(items: MessageItem[]): Promise<InboundImage[]> {
+  async downloadImages(items: MessageItem[], cdnBaseUrl = CDN_BASE_URL): Promise<InboundImage[]> {
     const images: InboundImage[] = [];
     for (const item of items) {
       if (item.type !== MessageItemType.IMAGE) continue;
       try {
-        const media = await downloadMediaFromItem(item, CDN_BASE_URL);
+        const media = await downloadMediaFromItem(item, cdnBaseUrl);
         if (!media) continue;
         const ext = extensionForImage(media.data.subarray(0, 16));
         const folder = path.join(env.uploadDir, "inbound");
@@ -511,13 +590,43 @@ export class IlinkGateway {
     return images;
   }
 
+  async downloadFiles(items: MessageItem[], cdnBaseUrl = CDN_BASE_URL): Promise<InboundFile[]> {
+    const files: InboundFile[] = [];
+    for (const item of items) {
+      if (item.type !== MessageItemType.FILE) continue;
+      try {
+        const media = await downloadMediaFromItem(item, cdnBaseUrl);
+        if (!media) continue;
+        const originalName = item.file_item?.file_name || media.fileName || "file.bin";
+        const safeName = path.basename(originalName).replace(/[^\w.\-\u4e00-\u9fa5]/g, "_");
+        const ext = path.extname(safeName) || ".bin";
+        const folder = path.join(env.uploadDir, "inbound", "files");
+        fs.mkdirSync(folder, { recursive: true });
+        const storedName = `${Date.now()}-${crypto.randomBytes(4).toString("hex")}${ext}`;
+        const filePath = path.join(folder, storedName);
+        fs.writeFileSync(filePath, media.data);
+        files.push({
+          url: `/uploads/inbound/files/${storedName}`,
+          filePath,
+          name: safeName,
+          size: media.data.length,
+          mime: getMimeFromFilename(safeName) || "application/octet-stream",
+        });
+      } catch (error) {
+        console.error("[ilink] failed to download inbound file:", error);
+      }
+    }
+    return files;
+  }
+
   private async handleRawMessage(client: WeChatClient, msg: WeixinMessage): Promise<void> {
     if (msg.message_type !== MessageType.USER) return;
     const openid = msg.from_user_id?.trim();
     if (!openid) return;
     const text = WeChatClient.extractText(msg).trim();
     const images = await this.downloadImages(msg.item_list ?? []);
-    if (!text && images.length === 0) return;
+    const files = await this.downloadFiles(msg.item_list ?? []);
+    if (!text && images.length === 0 && files.length === 0) return;
     const msgId = msg.message_id
       ? `ilink_${msg.message_id}`
       : msg.client_id
@@ -527,6 +636,7 @@ export class IlinkGateway {
       openid,
       text,
       images,
+      files,
       contextToken: msg.context_token ?? null,
       ilinkMsgId: msgId,
       messageId: msg.message_id != null ? String(msg.message_id) : null,
@@ -545,8 +655,27 @@ export class IlinkGateway {
     const openid = msg.from_user_id?.trim();
     if (!openid) return;
     const text = WeChatClient.extractText(msg).trim();
-    const images = await this.downloadImages(msg.item_list ?? []);
-    if (!text && images.length === 0) return;
+    const images = await this.downloadImages(
+      msg.item_list ?? [],
+      cdnBaseUrlForBot(
+        (
+          getDb()
+            .prepare("SELECT baseurl FROM users WHERE id = ?")
+            .get(userId) as { baseurl: string | null } | undefined
+        )?.baseurl ?? env.ilink.baseUrl,
+      ),
+    );
+    const files = await this.downloadFiles(
+      msg.item_list ?? [],
+      cdnBaseUrlForBot(
+        (
+          getDb()
+            .prepare("SELECT baseurl FROM users WHERE id = ?")
+            .get(userId) as { baseurl: string | null } | undefined
+        )?.baseurl ?? env.ilink.baseUrl,
+      ),
+    );
+    if (!text && images.length === 0 && files.length === 0) return;
     const msgId = msg.message_id
       ? `ilink_${userId}_${msg.message_id}`
       : msg.client_id
@@ -556,6 +685,7 @@ export class IlinkGateway {
       openid,
       text,
       images,
+      files,
       contextToken: msg.context_token ?? null,
       ilinkMsgId: msgId,
       messageId: msg.message_id != null ? String(msg.message_id) : null,

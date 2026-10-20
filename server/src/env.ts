@@ -49,11 +49,16 @@ export const env = {
     baseUrl: process.env.ILINK_BASE_URL || "https://ilinkai.weixin.qq.com",
     channelVersion: process.env.ILINK_CHANNEL_VERSION || "standalone-0.1.0",
   },
-  beichen: {
-    appid: process.env.BEICHEN_APPID || "",
-    appkey: process.env.BEICHEN_APPKEY || "",
-    loginType: process.env.BEICHEN_LOGIN_TYPE || "wx",
-    apiBase: (process.env.BEICHEN_API_BASE || "https://u.beichenwl.cn").replace(/\/+$/, ""),
+  oauth: {
+    appid: process.env.OAUTH_APPID || process.env.BEICHEN_APPID || "",
+    appkey: process.env.OAUTH_APPKEY || process.env.BEICHEN_APPKEY || "",
+    loginType: process.env.OAUTH_LOGIN_TYPE || process.env.BEICHEN_LOGIN_TYPE || "wx",
+    apiBase: (
+      process.env.OAUTH_API_BASE ||
+      process.env.BEICHEN_API_BASE ||
+      "https://u.suyanw.cn"
+    ).replace(/\/+$/, ""),
+    provider: (process.env.OAUTH_PROVIDER || "suyanw").toLowerCase(),
   },
   keepaliveCron: process.env.KEEPALIVE_CRON || "*/5 * * * *",
   messageRetentionDays: int(process.env.MESSAGE_RETENTION_DAYS, 30),
@@ -61,8 +66,13 @@ export const env = {
   seedDemo: bool(process.env.SEED_DEMO, true),
 } as const;
 
-export const isBeichenConfigured = Boolean(env.beichen.appid && env.beichen.appkey);
+export const isOAuthConfigured = Boolean(env.oauth.appid && env.oauth.appkey);
+export const isBeichenConfigured = isOAuthConfigured;
+
+export function oauthRedirectUri(): string {
+  return `${env.publicBaseUrl}/api/oauth/callback`;
+}
 
 export function beichenRedirectUri(): string {
-  return `${env.publicBaseUrl}/api/oauth/beichen/callback`;
+  return oauthRedirectUri();
 }

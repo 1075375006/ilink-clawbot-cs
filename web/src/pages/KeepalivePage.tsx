@@ -17,6 +17,7 @@ import type { KeepaliveData } from "../types";
 import { dayjs, fromNow } from "../lib/format";
 import { PageSkeleton } from "../components/Skeleton";
 import { Modal } from "../components/Modal";
+import { KeepaliveSchedulePanel } from "../components/KeepaliveSchedulePanel";
 import { useToast } from "../store/ToastContext";
 
 interface RunResult {
@@ -396,6 +397,7 @@ export function KeepalivePage() {
               </button>
             </div>
           </section>
+          <KeepaliveSchedulePanel />
         </div>
 
         <aside className="keepalive-side">

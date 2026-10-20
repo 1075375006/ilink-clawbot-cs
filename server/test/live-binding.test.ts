@@ -4,7 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterAll, beforeAll, expect, it } from "vitest";
 import type { DB } from "../src/db.js";
-import { encodeImageAesKey } from "../src/ilink/media.js";
+import { cdnBaseUrlForBot, encodeImageAesKey } from "../src/ilink/media.js";
 
 const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "ilink-live-test-"));
 let lastSendHeaders: http.IncomingHttpHeaders = {};
@@ -76,6 +76,8 @@ beforeAll(async () => {
   process.env.SEED_DEMO = "false";
   process.env.BEICHEN_APPID = "";
   process.env.BEICHEN_APPKEY = "";
+  process.env.OAUTH_APPID = "";
+  process.env.OAUTH_APPKEY = "";
   process.env.PUBLIC_BASE_URL = "http://localhost:3001";
   process.env.WEB_ORIGIN = "http://localhost:5173";
 
@@ -206,11 +208,14 @@ it("authorizes the customer first, then binds a real per-user ClawBot", async ()
   expect(exhausted.window_msg_count).toBe(10);
 });
 
-it("encodes image media aes_key as base64 of the hex key", () => {
+it("encodes image aes_key as base64(raw key) and derives regional CDN hosts", () => {
   const raw = Buffer.from("00112233445566778899aabbccddeeff", "hex");
   const wire = encodeImageAesKey(raw);
-  expect(Buffer.from(wire, "base64").toString("ascii")).toBe(
-    "00112233445566778899aabbccddeeff",
+  expect(wire).toBe(raw.toString("base64"));
+  expect(cdnBaseUrlForBot("https://ilinkai.weixin.qq.com")).toBe(
+    "https://novac2c.cdn.weixin.qq.com/c2c",
   );
-  expect(wire).not.toBe(raw.toString("base64"));
+  expect(cdnBaseUrlForBot("https://ilinkai-sh.weixin.qq.com")).toBe(
+    "https://novac2c-sh.cdn.weixin.qq.com/c2c",
+  );
 });

@@ -4,6 +4,7 @@ import {
   AlertTriangle,
   Check,
   Clock3,
+  FileText,
   History,
   Image as ImageIcon,
   Loader2,
@@ -13,7 +14,7 @@ import {
   Users,
   X,
 } from "lucide-react";
-import { api, uploadImage } from "../api";
+import { api, uploadFile, type UploadResult } from "../api";
 import type { PushPreview, User } from "../types";
 import { dayjs, fromNow } from "../lib/format";
 import { remainingSeconds, useNow } from "../lib/useNow";
@@ -56,9 +57,9 @@ export function PushPage() {
   const now = useNow(30_000);
   const [search, setSearch] = useState("");
   const [selected, setSelected] = useState<Set<number>>(new Set());
-  const [msgType, setMsgType] = useState<"text" | "image">("text");
+  const [msgType, setMsgType] = useState<"text" | "image" | "file">("text");
   const [content, setContent] = useState("");
-  const [mediaUrl, setMediaUrl] = useState<string | null>(null);
+  const [media, setMedia] = useState<UploadResult | null>(null);
   const [uploading, setUploading] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [result, setResult] = useState<PushResult | null>(null);
@@ -98,7 +99,10 @@ export function PushPage() {
           userIds: [...selected],
           content: content.trim(),
           msgType,
-          mediaUrl,
+          mediaUrl: media?.url ?? null,
+          mediaName: media?.name ?? null,
+          mediaSize: media?.size ?? null,
+          mediaMime: media?.mimeType ?? null,
         },
       }),
     onSuccess: (data) => {
@@ -106,7 +110,7 @@ export function PushPage() {
       setResult(data);
       setSelected(new Set());
       setContent("");
-      setMediaUrl(null);
+      setMedia(null);
       setMsgType("text");
       history.refetch();
       toast(`推送已执行：成功 ${data.sent} 位`, data.failed ? "info" : "success");
@@ -118,14 +122,19 @@ export function PushPage() {
     const file = event.target.files?.[0];
     event.target.value = "";
     if (!file) return;
-    if (!["image/png", "image/jpeg", "image/webp", "image/gif"].includes(file.type)) {
-      toast("仅支持 PNG / JPG / WEBP / GIF 图片", "error");
+    if (file.size > 20 * 1024 * 1024) {
+      toast("文件不能超过 20MB", "error");
       return;
     }
     setUploading(true);
     try {
-      const data = await uploadImage(file);
-      setMediaUrl(data.url);
+      const data = await uploadFile(file);
+      if (file.type.startsWith("image/") && !data.isImage) {
+        toast("仅支持 PNG / JPG / WEBP / GIF 图片", "error");
+        return;
+      }
+      setMedia(data);
+      setMsgType(data.isImage ? "image" : "file");
     } catch (error) {
       toast(error instanceof Error ? error.message : "上传失败", "error");
     } finally {
@@ -158,7 +167,7 @@ export function PushPage() {
 
   const canSend =
     selected.size > 0 &&
-    (msgType === "text" ? content.trim().length > 0 : Boolean(mediaUrl)) &&
+    (msgType === "text" ? content.trim().length > 0 : Boolean(media)) &&
     !sendMutation.isPending;
   const contentBytes = new TextEncoder().encode(content).length;
   const contentSegments = Math.max(1, Math.ceil(contentBytes / 16384));
@@ -262,23 +271,58 @@ export function PushPage() {
             >
               <ImageIcon size={15} /> 图片消息
             </button>
+            <button
+              type="button"
+              className={msgType === "file" ? "active" : ""}
+              onClick={() => setMsgType("file")}
+            >
+              <FileText size={15} /> 文件消息
+            </button>
           </div>
 
-          {msgType === "image" ? (
+          {msgType === "image" || msgType === "file" ? (
             <div className="push-image-area">
-              <input ref={fileRef} type="file" accept="image/*" hidden onChange={upload} />
-              {mediaUrl ? (
+              <input
+                ref={fileRef}
+                type="file"
+                accept={msgType === "image" ? "image/*" : undefined}
+                hidden
+                onChange={upload}
+              />
+              {media ? (
                 <div className="push-image-preview">
-                  <img src={mediaUrl} alt="待发送图片" />
-                  <button type="button" onClick={() => setMediaUrl(null)} aria-label="移除图片">
+                  {media.isImage ? (
+                    <img src={media.url} alt="待发送图片" />
+                  ) : (
+                    <span className="push-file-preview">
+                      <FileText size={20} />
+                      <span>
+                        <strong>{media.name}</strong>
+                        <small>{Math.max(1, Math.round(media.size / 1024))} KB</small>
+                      </span>
+                    </span>
+                  )}
+                  <button type="button" onClick={() => setMedia(null)} aria-label="移除附件">
                     <X size={15} />
                   </button>
                 </div>
               ) : (
                 <button type="button" className="upload-drop" onClick={() => fileRef.current?.click()} disabled={uploading}>
-                  {uploading ? <Loader2 size={22} className="spin" /> : <ImageIcon size={22} />}
-                  <strong>{uploading ? "正在上传…" : "点击上传图片"}</strong>
-                  <span>PNG / JPG / WEBP，最大 8MB</span>
+                  {uploading ? (
+                    <Loader2 size={22} className="spin" />
+                  ) : msgType === "image" ? (
+                    <ImageIcon size={22} />
+                  ) : (
+                    <FileText size={22} />
+                  )}
+                  <strong>
+                    {uploading ? "正在上传…" : msgType === "image" ? "点击上传图片" : "点击上传文件"}
+                  </strong>
+                  <span>
+                    {msgType === "image"
+                      ? "PNG / JPG / WEBP，最大 8MB"
+                      : "文档、压缩包等，最大 20MB"}
+                  </span>
                 </button>
               )}
             </div>
@@ -292,6 +336,8 @@ export function PushPage() {
               placeholder={
                 msgType === "image"
                   ? "可添加图片说明（可选）"
+                  : msgType === "file"
+                    ? "可添加文件说明（可选）"
                   : "输入推送内容，例如：本周会员日，满 300 减 50，今晚 8 点开始～"
               }
               rows={7}
@@ -339,7 +385,13 @@ export function PushPage() {
       <Modal
         open={confirmOpen}
         title="确认发送推送"
-        description={`将向 ${selected.size} 位客户发送${msgType === "image" ? "一条图片消息" : `一条文本消息（${contentSegments} 段）`}，其中 ${
+        description={`将向 ${selected.size} 位客户发送${
+          msgType === "image"
+            ? "一条图片消息"
+            : msgType === "file"
+              ? "一条文件消息"
+              : `一条文本消息（${contentSegments} 段）`
+        }，其中 ${
           preview.data?.unreachable ?? 0
         } 位窗口已关闭或配额不足将跳过`}
         onClose={() => setConfirmOpen(false)}
@@ -393,8 +445,17 @@ export function PushPage() {
           )}
           <div className="confirm-preview">
             <span>消息预览</span>
-            {mediaUrl ? <img src={mediaUrl} alt="推送图片" /> : null}
-            <p>{content.trim() || "（仅发送图片）"}</p>
+            {media?.isImage ? <img src={media.url} alt="推送图片" /> : null}
+            {media && !media.isImage ? (
+              <span className="push-file-preview">
+                <FileText size={18} />
+                <span>
+                  <strong>{media.name}</strong>
+                  <small>{Math.max(1, Math.round(media.size / 1024))} KB</small>
+                </span>
+              </span>
+            ) : null}
+            <p>{content.trim() || (media ? "（仅发送附件）" : "")}</p>
           </div>
         </div>
       </Modal>

@@ -72,7 +72,7 @@ export function migrate(db: DB): void {
       user_id         INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
       direction       TEXT NOT NULL CHECK (direction IN ('inbound', 'outbound')),
       msg_type        TEXT NOT NULL DEFAULT 'text'
-                      CHECK (msg_type IN ('text', 'image', 'template', 'system')),
+                      CHECK (msg_type IN ('text', 'image', 'file', 'template', 'system')),
       content         TEXT NOT NULL DEFAULT '',
       media_url       TEXT,
       message_id      TEXT UNIQUE,
@@ -110,6 +110,28 @@ export function migrate(db: DB): void {
     );
 
     CREATE INDEX IF NOT EXISTS idx_keepalive_logs_time ON keepalive_logs(sent_at);
+
+    CREATE TABLE IF NOT EXISTS keepalive_schedules (
+      id             INTEGER PRIMARY KEY AUTOINCREMENT,
+      cron_expr      TEXT NOT NULL,
+      message        TEXT NOT NULL,
+      media_type     TEXT NOT NULL DEFAULT 'text',
+      media_url      TEXT,
+      media_name     TEXT,
+      enabled        INTEGER NOT NULL DEFAULT 1,
+      only_if_active INTEGER NOT NULL DEFAULT 1,
+      created_at     TEXT NOT NULL,
+      updated_at     TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS keepalive_runs (
+      id           INTEGER PRIMARY KEY AUTOINCREMENT,
+      schedule_id  INTEGER,
+      triggered_at TEXT NOT NULL,
+      sent_count   INTEGER NOT NULL DEFAULT 0,
+      skip_count   INTEGER NOT NULL DEFAULT 0,
+      error        TEXT
+    );
 
     CREATE TABLE IF NOT EXISTS binding_sessions (
       id            INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -210,7 +232,11 @@ export function migrate(db: DB): void {
   addColumn("messages", "message_id", "TEXT");
   addColumn("messages", "client_id", "TEXT");
   addColumn("messages", "content_json", "TEXT");
+  addColumn("messages", "media_name", "TEXT");
+  addColumn("messages", "media_size", "INTEGER");
+  addColumn("messages", "media_mime", "TEXT");
   addColumn("keepalive_config", "quota_warn_at", "INTEGER NOT NULL DEFAULT 1");
+  addColumn("keepalive_schedules", "media_name", "TEXT");
   addColumn("binding_sessions", "qrcode", "TEXT");
   addColumn("binding_sessions", "qrcode_img", "TEXT");
   addColumn("binding_sessions", "poll_baseurl", "TEXT");
@@ -222,6 +248,63 @@ export function migrate(db: DB): void {
   addColumn("binding_sessions", "baseurl", "TEXT");
   addColumn("binding_sessions", "bot_token", "TEXT");
   addColumn("binding_sessions", "ilink_user_id", "TEXT");
+
+  // v1.8: widen the messages.msg_type constraint so file messages are stored
+  // natively. SQLite cannot alter a CHECK constraint in place, so rebuild the
+  // table and copy every row across.
+  const messagesSql = (
+    db
+      .prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'messages'")
+      .get() as { sql: string } | undefined
+  )?.sql;
+  if (messagesSql && !messagesSql.includes("'file'")) {
+    db.pragma("foreign_keys = OFF");
+    try {
+      db.exec(`
+        BEGIN;
+        CREATE TABLE messages_v18 (
+          id              INTEGER PRIMARY KEY AUTOINCREMENT,
+          user_id         INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          direction       TEXT NOT NULL CHECK (direction IN ('inbound', 'outbound')),
+          msg_type        TEXT NOT NULL DEFAULT 'text'
+                          CHECK (msg_type IN ('text', 'image', 'file', 'template', 'system')),
+          content         TEXT NOT NULL DEFAULT '',
+          media_url       TEXT,
+          message_id      TEXT UNIQUE,
+          client_id       TEXT,
+          content_json    TEXT,
+          ilink_msg_id    TEXT UNIQUE,
+          is_keepalive    INTEGER NOT NULL DEFAULT 0,
+          is_read         INTEGER NOT NULL DEFAULT 0,
+          delivery_status TEXT NOT NULL DEFAULT 'sent'
+                          CHECK (delivery_status IN ('sent', 'delivered', 'failed', 'queued')),
+          error           TEXT,
+          sent_at         TEXT NOT NULL,
+          consumed_quota  INTEGER NOT NULL DEFAULT 0,
+          media_name      TEXT,
+          media_size      INTEGER,
+          media_mime      TEXT
+        );
+        INSERT INTO messages_v18
+          (id, user_id, direction, msg_type, content, media_url, message_id, client_id,
+           content_json, ilink_msg_id, is_keepalive, is_read, delivery_status, error,
+           sent_at, consumed_quota, media_name, media_size, media_mime)
+        SELECT
+           id, user_id, direction, msg_type, content, media_url, message_id, client_id,
+           content_json, ilink_msg_id, is_keepalive, is_read, delivery_status, error,
+           sent_at, consumed_quota, media_name, media_size, media_mime
+        FROM messages;
+        DROP TABLE messages;
+        ALTER TABLE messages_v18 RENAME TO messages;
+        COMMIT;
+      `);
+    } catch (error) {
+      if (db.inTransaction) db.exec("ROLLBACK");
+      throw error;
+    } finally {
+      db.pragma("foreign_keys = ON");
+    }
+  }
 
   db.exec(`
     CREATE UNIQUE INDEX IF NOT EXISTS idx_users_ilink_bot_id
@@ -271,6 +354,10 @@ export function migrate(db: DB): void {
     `INSERT OR IGNORE INTO schema_migrations (version, applied_at, description)
      VALUES ('20261020_004', ?, 'v1.7 image CDN aes_key encoding fix')`,
   ).run(new Date().toISOString());
+  db.prepare(
+    `INSERT OR IGNORE INTO schema_migrations (version, applied_at, description)
+     VALUES ('20261020_005', ?, 'v1.8 provider-neutral oauth, scheduled keepalive and media messages')`,
+  ).run(new Date().toISOString());
 }
 
 // ---------------------------------------------------------------------------
@@ -309,7 +396,7 @@ export interface MessageRow {
   id: number;
   user_id: number;
   direction: "inbound" | "outbound";
-  msg_type: "text" | "image" | "template" | "system";
+  msg_type: "text" | "image" | "file" | "template" | "system";
   content: string;
   media_url: string | null;
   ilink_msg_id: string | null;
@@ -322,6 +409,9 @@ export interface MessageRow {
   message_id?: string | null;
   client_id?: string | null;
   content_json?: string | null;
+  media_name?: string | null;
+  media_size?: number | null;
+  media_mime?: string | null;
 }
 
 export interface KeepaliveConfigRow {

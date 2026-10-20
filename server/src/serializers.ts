@@ -53,13 +53,18 @@ export function serializeUser(
 }
 
 export function serializeMessage(message: MessageRow) {
+  const type =
+    message.msg_type === "template" ? (message.media_url ? "file" : message.msg_type) : message.msg_type;
   return {
     id: message.id,
     userId: message.user_id,
     direction: message.direction,
-    type: message.msg_type,
+    type,
     content: message.content,
     mediaUrl: message.media_url,
+    mediaName: message.media_name ?? null,
+    mediaSize: message.media_size ?? null,
+    mediaMime: message.media_mime ?? null,
     isKeepalive: Boolean(message.is_keepalive),
     consumedQuota: Boolean(message.consumed_quota),
     isRead: Boolean(message.is_read),

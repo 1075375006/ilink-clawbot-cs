@@ -3,6 +3,7 @@ import type { ScheduledTask } from "node-cron";
 import { env } from "./env.js";
 import { expireStaleSessions } from "./services/binding.js";
 import { runKeepalive } from "./services/keepalive.js";
+import { reloadScheduledKeepalives } from "./services/keepalive-schedules.js";
 
 let task: ScheduledTask | null = null;
 let expiryTask: ScheduledTask | null = null;
@@ -28,6 +29,7 @@ export function startScheduler(): void {
       console.error("[binding] expiry sweep failed:", error);
     }
   });
+  reloadScheduledKeepalives();
   console.log(`[scheduler] keepalive cron: ${env.keepaliveCron}`);
 }
 

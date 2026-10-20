@@ -7,8 +7,11 @@ import { isWindowOpen, nowIso } from "../util/time.js";
 export interface PushInput {
   userIds: number[];
   content: string;
-  msgType?: "text" | "image";
+  msgType?: "text" | "image" | "file";
   mediaUrl?: string | null;
+  mediaName?: string | null;
+  mediaSize?: number | null;
+  mediaMime?: string | null;
 }
 
 export function previewPush(userIds: number[]) {
@@ -58,8 +61,8 @@ export async function sendPush(input: PushInput) {
   if (bytes > 100_000) {
     throw new AppError(400, "MESSAGE_TOO_LONG", "推送内容过长，请控制在 100KB 以内。");
   }
-  if (msgType === "image" && !input.mediaUrl) {
-    throw new AppError(400, "MEDIA_REQUIRED", "请先上传图片。");
+  if ((msgType === "image" || msgType === "file") && !input.mediaUrl) {
+    throw new AppError(400, "MEDIA_REQUIRED", "请先上传媒体文件。");
   }
   const preview = previewPush(ids);
   const db = getDb();
@@ -94,6 +97,9 @@ export async function sendPush(input: PushInput) {
         content,
         msgType,
         mediaUrl: input.mediaUrl,
+        mediaName: input.mediaName,
+        mediaSize: input.mediaSize,
+        mediaMime: input.mediaMime,
       });
       sent += 1;
       results.push({ userId: item.userId, name: item.name, status: "sent" });
@@ -108,6 +114,7 @@ export async function sendPush(input: PushInput) {
         "INSERT INTO push_recipients (campaign_id, user_id, status, error, sent_at) VALUES (?, ?, 'failed', ?, ?)",
       ).run(campaignId, item.userId, message, nowIso());
     }
+    await new Promise((resolve) => setTimeout(resolve, 200));
   }
 
   db.prepare(
