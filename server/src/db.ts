@@ -267,6 +267,10 @@ export function migrate(db: DB): void {
     `INSERT OR IGNORE INTO schema_migrations (version, applied_at, description)
      VALUES ('20261020_003', ?, 'v1.5 document alignment; no schema changes')`,
   ).run(new Date().toISOString());
+  db.prepare(
+    `INSERT OR IGNORE INTO schema_migrations (version, applied_at, description)
+     VALUES ('20261020_004', ?, 'v1.7 image CDN aes_key encoding fix')`,
+  ).run(new Date().toISOString());
 }
 
 // ---------------------------------------------------------------------------

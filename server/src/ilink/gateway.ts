@@ -19,6 +19,7 @@ import { getDb } from "../db.js";
 import { decryptSecret, encryptSecret } from "../util/crypto.js";
 import { emitToAdmins } from "../realtime.js";
 import { IlinkApi, IlinkSessionExpiredError } from "./api.js";
+import { encodeImageAesKey } from "./media.js";
 import { contextTokenKey, cursorKey, redisGet, redisSetEx } from "../redis.js";
 
 export interface InboundImage {
@@ -453,7 +454,7 @@ export class IlinkGateway {
       image_item: {
         media: {
           encrypt_query_param: downloadParam,
-          aes_key: aeskey.toString("base64"),
+          aes_key: encodeImageAesKey(aeskey),
           encrypt_type: 1,
         },
         mid_size: filesize,

@@ -4,6 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterAll, beforeAll, expect, it } from "vitest";
 import type { DB } from "../src/db.js";
+import { encodeImageAesKey } from "../src/ilink/media.js";
 
 const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "ilink-live-test-"));
 let lastSendHeaders: http.IncomingHttpHeaders = {};
@@ -203,4 +204,13 @@ it("authorizes the customer first, then binds a real per-user ClawBot", async ()
     window_msg_count: number;
   };
   expect(exhausted.window_msg_count).toBe(10);
+});
+
+it("encodes image media aes_key as base64 of the hex key", () => {
+  const raw = Buffer.from("00112233445566778899aabbccddeeff", "hex");
+  const wire = encodeImageAesKey(raw);
+  expect(Buffer.from(wire, "base64").toString("ascii")).toBe(
+    "00112233445566778899aabbccddeeff",
+  );
+  expect(wire).not.toBe(raw.toString("base64"));
 });
