@@ -7,9 +7,11 @@ import {
 } from "../src/ilink/media.js";
 
 describe("iLink media wire format", () => {
-  it("keeps image aes_key as base64 of the raw 16-byte key", () => {
+  it("encodes image aes_key as base64 of the hex key string", () => {
     const key = Buffer.from("00112233445566778899aabbccddeeff", "hex");
-    expect(encodeImageAesKey(key)).toBe(key.toString("base64"));
+    const encoded = encodeImageAesKey(key);
+    expect(Buffer.from(encoded, "base64").toString("ascii")).toBe(key.toString("hex"));
+    expect(Buffer.from(encoded, "base64")).toHaveLength(32);
   });
 
   it("encodes file aes_key as base64 of the hex key string", () => {
@@ -33,6 +35,8 @@ describe("iLink media wire format", () => {
   it("produces a 16-byte ECB key usable for AES-128", () => {
     const key = crypto.randomBytes(16);
     expect(key).toHaveLength(16);
-    expect(encodeImageAesKey(key)).toBe(key.toString("base64"));
+    expect(Buffer.from(encodeImageAesKey(key), "base64").toString("ascii")).toBe(
+      key.toString("hex"),
+    );
   });
 });

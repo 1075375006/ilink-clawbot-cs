@@ -1,8 +1,12 @@
 import { CDN_BASE_URL } from "wechat-ilink-client";
 
-/** iLink `media.aes_key` wire format for images: base64(raw 16-byte key). */
+/**
+ * iLink `media.aes_key` wire format for images: base64 of the 32-char lowercase
+ * hex representation of the 16-byte key. base64(raw key) uploads successfully
+ * but renders as a blank image in WeChat, which is why v1.7 used this form.
+ */
 export function encodeImageAesKey(aeskey: Buffer): string {
-  return aeskey.toString("base64");
+  return Buffer.from(aeskey.toString("hex"), "ascii").toString("base64");
 }
 
 /** iLink file media wire format: base64(hex string of the 16-byte key). */

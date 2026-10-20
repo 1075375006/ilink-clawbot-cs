@@ -208,10 +208,10 @@ it("authorizes the customer first, then binds a real per-user ClawBot", async ()
   expect(exhausted.window_msg_count).toBe(10);
 });
 
-it("encodes image aes_key as base64(raw key) and derives regional CDN hosts", () => {
+it("encodes image aes_key as base64(hex key) and derives regional CDN hosts", () => {
   const raw = Buffer.from("00112233445566778899aabbccddeeff", "hex");
   const wire = encodeImageAesKey(raw);
-  expect(wire).toBe(raw.toString("base64"));
+  expect(Buffer.from(wire, "base64").toString("ascii")).toBe(raw.toString("hex"));
   expect(cdnBaseUrlForBot("https://ilinkai.weixin.qq.com")).toBe(
     "https://novac2c.cdn.weixin.qq.com/c2c",
   );

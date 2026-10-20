@@ -9,7 +9,7 @@
 - 文本、图片、文件三类消息的收发与历史回放
 - 仪表盘统计与趋势图表
 - v1.7 协议细节：40 秒长轮询、client_id 幂等、16KiB 文本分段、错误分类、Redis 共享状态、消息裁剪、Schema 版本化
-- v1.8 图片修复：图片 `media.aes_key` 使用 base64(原始 16 字节 key)，并按客户 `baseurl` 推导区域 CDN 节点，修复微信端图片空白
+- 图片发送：图片 `media.aes_key` 使用 base64(hex key)，并按客户 `baseurl` 推导区域 CDN 节点，避免微信端图片空白
 - v1.8 聚合登录：环境变量改为 provider-neutral 的 `OAUTH_*`，旧的 `BEICHEN_*` 仍可读取
 
 开箱即用：默认使用内置的**演示通道**，不需要 iLink 或聚合登录凭证，也能完整体验"生成二维码 → 扫码 → 授权 → 出现在客户列表 → 对话 → 推送 → 保活"的全流程。
@@ -129,7 +129,7 @@ uploads/  图片消息与上传文件
 - **先授权后绑定**：聚合登录回调先创建 `pending_clawbot` 记录；ClawBot 扫码确认后才写入 `ilink_bot_id` 并激活为 `active`，客户列表只展示已激活用户。
 - **游标表扩展**：`msg_cursor` 以 `ilink_bot_id` 为唯一键保存每个客户 Bot 的游标；这是按客户独立绑定模型对单行游标表的扩展。
 - **身份信息**：头像、昵称只来自聚合登录 OAuth；未完成授权的前台用户不会进入客户列表。
-- **媒体消息**：图片和文件先经 AES-128-ECB 加密上传到 iLink 分区 CDN，再以 CDN 返回的媒体元信息发送；图片 `aes_key` 为 base64(原始 key)，文件为 base64(hex key)。
+- **媒体消息**：图片和文件先经 AES-128-ECB 加密上传到 iLink 分区 CDN，再以 CDN 返回的媒体元信息发送；图片与文件的 `aes_key` 均使用 base64(hex key)。
 - **定时保活**：`keepalive_schedules` 保存 cron、文案和媒体附件，调度结果写入 `keepalive_runs`，可在保活页查看最近触发记录。
 
 ## 主要页面
