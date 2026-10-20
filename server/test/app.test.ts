@@ -226,6 +226,11 @@ describe("binding and beichen oauth", () => {
     expect(response.statusCode).toBe(200);
     expect(JSON.parse(response.body).oauthProvider).toBe("suyanw");
   });
+
+  it("labels the unconfigured provider in Chinese", async () => {
+    const { getLoginUrl } = await import("../src/services/oauth.js");
+    await expect(getLoginUrl("http://localhost/callback")).rejects.toThrow(/素颜/);
+  });
 });
 
 describe("messaging rules", () => {

@@ -13,7 +13,10 @@ export interface OAuthIdentity {
 type JsonRecord = Record<string, unknown>;
 
 function providerLabel(): string {
-  return env.oauth.provider || "聚合登录";
+  const provider = env.oauth.provider;
+  if (provider === "suyanw") return "素颜";
+  if (provider === "beichenwl") return "北辰";
+  return provider || "聚合登录";
 }
 
 function unwrap(payload: JsonRecord): JsonRecord {
