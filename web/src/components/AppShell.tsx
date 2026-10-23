@@ -3,6 +3,7 @@ import {
   Bell,
   ChevronDown,
   HeartPulse,
+  Headphones,
   LayoutDashboard,
   LogOut,
   MessageCircle,
@@ -34,6 +35,7 @@ const NAV = [
 const CHANNEL_NAV = [
   { to: "/invite", label: "客户绑定", icon: QrCode },
   { to: "/settings/channel", label: "通道状态", icon: Settings2 },
+  { to: "/settings/agents", label: "客服账号", icon: Headphones },
 ];
 
 const TITLES: Record<string, { title: string; subtitle: string }> = {
@@ -45,6 +47,7 @@ const TITLES: Record<string, { title: string; subtitle: string }> = {
   "/keepalive": { title: "保活设置", subtitle: "在会话窗口关闭前，自然地保持联系" },
   "/invite": { title: "客户绑定", subtitle: "生成专属二维码，邀请客户加入" },
   "/settings/channel": { title: "通道状态", subtitle: "按客户维护 iLink Bot 连接与授权服务" },
+  "/settings/agents": { title: "客服账号", subtitle: "管理团队成员与独立客服登录权限" },
 };
 
 function BrandMark() {

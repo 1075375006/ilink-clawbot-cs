@@ -11,6 +11,7 @@ import { AppError } from "./errors.js";
 import { registerAdminRoutes } from "./routes/admin.js";
 import { registerPublicRoutes } from "./routes/public.js";
 import { registerChannelRoutes } from "./routes/channel.js";
+import { registerSupportRoutes } from "./routes/support.js";
 
 const MUTATING = new Set(["POST", "PUT", "PATCH", "DELETE"]);
 
@@ -37,7 +38,7 @@ export async function buildApp(): Promise<FastifyInstance> {
     credentials: true,
   });
   await app.register(multipart, {
-    limits: { fileSize: 8 * 1024 * 1024, files: 1 },
+    limits: { fileSize: 20 * 1024 * 1024, files: 1 },
   });
 
   fs.mkdirSync(env.uploadDir, { recursive: true });
@@ -47,6 +48,13 @@ export async function buildApp(): Promise<FastifyInstance> {
     decorateReply: false,
     cacheControl: true,
     maxAge: "7d",
+    setHeaders: (reply, filePath) => {
+      reply.header("X-Content-Type-Options", "nosniff");
+      reply.header("Content-Security-Policy", "sandbox");
+      if (![".png", ".jpg", ".jpeg", ".webp", ".gif"].includes(path.extname(filePath).toLowerCase())) {
+        reply.header("Content-Disposition", "attachment");
+      }
+    },
   });
 
   app.addHook("onRequest", async (request) => {
@@ -60,6 +68,7 @@ export async function buildApp(): Promise<FastifyInstance> {
   await registerPublicRoutes(app);
   await registerAdminRoutes(app);
   await registerChannelRoutes(app);
+  await registerSupportRoutes(app);
 
   app.setErrorHandler((error, request, reply) => {
     if (error instanceof AppError) {

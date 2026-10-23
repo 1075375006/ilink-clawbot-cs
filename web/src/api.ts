@@ -52,10 +52,10 @@ export interface UploadResult {
   isImage: boolean;
 }
 
-export function uploadFile(file: File): Promise<UploadResult> {
+export function uploadFile(file: File, endpoint = "/api/uploads"): Promise<UploadResult> {
   const form = new FormData();
   form.append("file", file);
-  return api<UploadResult>("/api/uploads", {
+  return api<UploadResult>(endpoint, {
     method: "POST",
     body: form,
   });

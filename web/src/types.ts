@@ -1,3 +1,13 @@
+export interface SupportAgent {
+  id: number;
+  username: string;
+  name: string;
+  enabled: boolean;
+  lastLoginAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface User {
   id: number;
   name: string;

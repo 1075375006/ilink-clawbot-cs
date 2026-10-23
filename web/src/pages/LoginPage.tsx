@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from "react";
 import { ArrowRight, Loader2, LockKeyhole, Mail, MessageCircle, ShieldCheck, Sparkles } from "lucide-react";
-import { Navigate, useLocation, useNavigate } from "react-router-dom";
+import { Link, Navigate, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../store/AuthContext";
 import { ApiError } from "../api";
 
@@ -90,8 +90,8 @@ export function LoginPage() {
             <span className="login-mini-logo">
               <MessageCircle size={20} />
             </span>
-            <h2>欢迎回来</h2>
-            <p>登录客服工作台，开始今天的对话</p>
+            <h2>管理后台登录</h2>
+            <p>管理客户、通道与客服团队</p>
           </div>
           <form onSubmit={submit} className="login-form">
             <label>
@@ -125,10 +125,11 @@ export function LoginPage() {
             {error ? <div className="form-error">{error}</div> : null}
             <button className="btn btn-primary btn-login" type="submit" disabled={busy}>
               {busy ? <Loader2 size={18} className="spin" /> : null}
-              {busy ? "正在登录…" : "进入工作台"}
+              {busy ? "正在登录…" : "进入管理后台"}
               {!busy ? <ArrowRight size={17} /> : null}
             </button>
           </form>
+          <Link className="admin-support-entry" to="/support/login"><MessageCircle size={16} />我是客服，进入独立聊天系统<ArrowRight size={14} /></Link>
           {isDev ? (
             <div className="demo-hint">
               <span>演示账号</span>

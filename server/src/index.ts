@@ -7,8 +7,7 @@ import { handleInbound, handleInboundForUser, pruneMessages } from "./services/m
 import { channelRow } from "./services/channel.js";
 import { setRealtime } from "./realtime.js";
 import { startScheduler, stopScheduler } from "./scheduler.js";
-import { verifySession } from "./util/crypto.js";
-import { SESSION_COOKIE } from "./auth.js";
+import { configureRealtimeAuth } from "./realtime-auth.js";
 import { resumeBindingPollers } from "./services/binding.js";
 import { Server } from "socket.io";
 import { createAdapter } from "@socket.io/redis-adapter";
@@ -61,33 +60,7 @@ try {
   console.warn("[redis] Socket.IO adapter unavailable:", error);
 }
 
-io.use((socket, next) => {
-  const raw = socket.handshake.headers.cookie ?? "";
-  const cookies: Record<string, string> = {};
-  raw
-    .split(";")
-    .map((part) => part.trim())
-    .filter(Boolean)
-    .forEach((part) => {
-      const index = part.indexOf("=");
-      if (index <= 0) return;
-      try {
-        cookies[part.slice(0, index)] = decodeURIComponent(part.slice(index + 1));
-      } catch {
-        cookies[part.slice(0, index)] = part.slice(index + 1);
-      }
-    });
-  const token = cookies[SESSION_COOKIE];
-  const session = token ? verifySession(token) : null;
-  if (!session) return next(new Error("UNAUTHORIZED"));
-  socket.data.admin = session;
-  return next();
-});
-
-io.on("connection", (socket) => {
-  socket.join("admins");
-  socket.emit("channel:status", gateway.status());
-});
+configureRealtimeAuth(io);
 
 setRealtime(io);
 startScheduler();

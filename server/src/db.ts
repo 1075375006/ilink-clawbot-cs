@@ -31,6 +31,18 @@ export function closeDatabase(): void {
 
 export function migrate(db: DB): void {
   db.exec(`
+    CREATE TABLE IF NOT EXISTS support_agents (
+      id              INTEGER PRIMARY KEY AUTOINCREMENT,
+      username        TEXT NOT NULL UNIQUE COLLATE NOCASE,
+      name            TEXT NOT NULL,
+      password_hash   TEXT NOT NULL,
+      enabled         INTEGER NOT NULL DEFAULT 1 CHECK (enabled IN (0, 1)),
+      session_version INTEGER NOT NULL DEFAULT 0,
+      last_login_at   TEXT,
+      created_at      TEXT NOT NULL,
+      updated_at      TEXT NOT NULL
+    );
+
     CREATE TABLE IF NOT EXISTS admins (
       id            INTEGER PRIMARY KEY AUTOINCREMENT,
       email         TEXT NOT NULL UNIQUE,
@@ -357,6 +369,10 @@ export function migrate(db: DB): void {
   db.prepare(
     `INSERT OR IGNORE INTO schema_migrations (version, applied_at, description)
      VALUES ('20261020_005', ?, 'v1.8 provider-neutral oauth, scheduled keepalive and media messages')`,
+  ).run(new Date().toISOString());
+  db.prepare(
+    `INSERT OR IGNORE INTO schema_migrations (version, applied_at, description)
+     VALUES ('20261023_001', ?, 'Independent support accounts and chat-only authentication')`,
   ).run(new Date().toISOString());
 }
 

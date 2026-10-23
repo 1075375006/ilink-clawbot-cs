@@ -71,7 +71,37 @@ export function signSession(payload: SessionPayload): string {
 
 export function verifySession(token: string): SessionPayload | null {
   try {
-    return jwt.verify(token, env.sessionSecret) as SessionPayload;
+    const payload = jwt.verify(token, env.sessionSecret, { algorithms: ["HS256"] });
+    if (
+      typeof payload === "string" || payload.role === "support" ||
+      !Number.isInteger(payload.adminId) || payload.adminId <= 0 ||
+      typeof payload.email !== "string" || typeof payload.name !== "string"
+    ) return null;
+    return payload as unknown as SessionPayload;
+  } catch {
+    return null;
+  }
+}
+
+export interface SupportSessionPayload {
+  role: "support";
+  agentId: number;
+  version: number;
+}
+
+export function signSupportSession(payload: SupportSessionPayload): string {
+  return jwt.sign(payload, env.sessionSecret, { expiresIn: "12h" });
+}
+
+export function verifySupportSession(token: string): SupportSessionPayload | null {
+  try {
+    const payload = jwt.verify(token, env.sessionSecret, { algorithms: ["HS256"] });
+    if (
+      typeof payload === "string" || payload.role !== "support" ||
+      !Number.isInteger(payload.agentId) || payload.agentId <= 0 ||
+      !Number.isInteger(payload.version) || payload.version < 0
+    ) return null;
+    return payload as unknown as SupportSessionPayload;
   } catch {
     return null;
   }

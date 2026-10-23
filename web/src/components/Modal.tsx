@@ -1,6 +1,7 @@
 import { X } from "lucide-react";
 import { useEffect, type ReactNode } from "react";
 import { createPortal } from "react-dom";
+import { useMobileViewport } from "../lib/useMobileViewport";
 
 interface ModalProps {
   open: boolean;
@@ -21,6 +22,7 @@ export function Modal({
   footer,
   width = 520,
 }: ModalProps) {
+  const viewport = useMobileViewport(open);
   useEffect(() => {
     if (!open) return;
     const onKey = (event: KeyboardEvent) => {
@@ -32,10 +34,11 @@ export function Modal({
 
   if (!open) return null;
   return createPortal(
-    <div className="modal-backdrop" onMouseDown={onClose}>
+    <div className="modal-backdrop" onMouseDown={onClose}
+      style={viewport ? { top: viewport.top, height: viewport.height, bottom: "auto" } : undefined}>
       <div
         className="modal-card"
-        style={{ maxWidth: width }}
+        style={{ maxWidth: width, ...(viewport ? { maxHeight: "calc(100% - 24px)" } : {}) }}
         onMouseDown={(event) => event.stopPropagation()}
         role="dialog"
         aria-modal="true"

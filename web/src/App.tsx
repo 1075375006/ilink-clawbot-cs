@@ -1,5 +1,5 @@
 import { Navigate, Route, Routes, useLocation } from "react-router-dom";
-import type { ReactNode } from "react";
+import { lazy, Suspense, type ReactNode } from "react";
 import { AppShell } from "./components/AppShell";
 import { useAuth } from "./store/AuthContext";
 import { LoginPage } from "./pages/LoginPage";
@@ -13,6 +13,12 @@ import { MockOAuthPage } from "./pages/MockOAuthPage";
 import { InvitePage } from "./pages/InvitePage";
 import { ChannelPage } from "./pages/ChannelPage";
 import { NotFoundPage } from "./pages/NotFoundPage";
+const SupportAgentsPage = lazy(() => import("./pages/SupportAgentsPage").then((module) => ({ default: module.SupportAgentsPage })));
+const SupportPortal = lazy(() => import("./pages/SupportPortal").then((module) => ({ default: module.SupportPortal })));
+
+function LoadingPage() {
+  return <div className="splash"><span className="splash-logo">iLink</span><span className="splash-bar" /></div>;
+}
 
 function Protected({ children }: { children: ReactNode }) {
   const { admin, loading } = useAuth();
@@ -33,6 +39,7 @@ export default function App() {
   return (
     <Routes>
       <Route path="/login" element={<LoginPage />} />
+      <Route path="/support/*" element={<Suspense fallback={<LoadingPage />}><SupportPortal /></Suspense>} />
       <Route path="/bind" element={<BindPage />} />
       <Route path="/bind/scan/:token" element={<BindPage autoScan />} />
       <Route path="/bind/success" element={<BindPage successView />} />
@@ -54,6 +61,7 @@ export default function App() {
         <Route path="keepalive" element={<KeepalivePage />} />
         <Route path="invite" element={<InvitePage />} />
         <Route path="settings/channel" element={<ChannelPage />} />
+        <Route path="settings/agents" element={<Suspense fallback={<LoadingPage />}><SupportAgentsPage /></Suspense>} />
       </Route>
       <Route path="*" element={<NotFoundPage />} />
     </Routes>

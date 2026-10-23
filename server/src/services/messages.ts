@@ -270,16 +270,38 @@ function resolveMediaPath(url: string): string {
   }
   const relative = url.replace(/^\/uploads\//, "");
   const absolute = path.resolve(env.uploadDir, relative);
-  if (!absolute.startsWith(path.resolve(env.uploadDir))) {
+  const root = `${path.resolve(env.uploadDir)}${path.sep}`;
+  if (!absolute.startsWith(root)) {
     throw new AppError(400, "INVALID_MEDIA", "媒体地址无效。");
   }
   if (!fs.existsSync(absolute)) {
     throw new AppError(400, "INVALID_MEDIA", "媒体文件不存在，请重新上传。");
   }
+  if (!fs.realpathSync(absolute).startsWith(`${fs.realpathSync(env.uploadDir)}${path.sep}`) || !fs.statSync(absolute).isFile()) {
+    throw new AppError(400, "INVALID_MEDIA", "媒体地址无效。");
+  }
   return absolute;
 }
 
+const outboundQueues = new Map<number, Promise<MessageRow>>();
+
+// Shared by admins and support agents: concurrent replies must not spend the
+// same last quota slot twice on this single-instance SQLite deployment.
 export async function sendOutbound(
+  userId: number,
+  input: OutboundInput,
+): Promise<MessageRow> {
+  const previous = outboundQueues.get(userId) ?? Promise.resolve();
+  const pending = previous.catch(() => undefined).then(() => sendOutboundUnlocked(userId, input));
+  outboundQueues.set(userId, pending);
+  try {
+    return await pending;
+  } finally {
+    if (outboundQueues.get(userId) === pending) outboundQueues.delete(userId);
+  }
+}
+
+async function sendOutboundUnlocked(
   userId: number,
   input: OutboundInput,
 ): Promise<MessageRow> {
